@@ -239,55 +239,64 @@ impl Updater {
         let mut update_size: usize = 0;
         let mut total_size: usize = 0;
         for file in index.files.iter() {
+            total_size += file.size;
+
             if file.path.contains("..") || Path::new(&file.path).has_root() {
                 warn!("File path '{}' sanitized", file.path);
                 continue;
             }
 
-            let path = ld_dir_path.as_ref().map(|p| p.join(&file.path));
-            let exists = path.as_ref().map(|p| p.is_file()).unwrap_or(false);
-
             let updated = if is_new_repo {
                 // redownload every single file because the directory will be deleted
                 true
-            } else if !pedantic && exists && excludes.contains(&file.path) {
-                // skip excluded file unless pedantic update or the file doesn't exist in the system
-                false
-            } else if let Some(hash) = repo_cache.files.get(&file.path) {
-                // get path or force download if path is invalid
-                if let Some(path) = path {
-                    // file doesn't exist -> download
-                    if !exists {
-                        true
-                    } else {
-                        // fast size check to catch interrupted downloads
-                        let metadata = fs::metadata(&path).ok();
-                        let size_mismatch = metadata.map(|m| m.len() as usize != file.size).unwrap_or(true);
-        
-                        if size_mismatch {
-                            true // size mismatch -> redownload
-                        } else if hash != &file.hash {
-                            true // index hash changed -> update
-                        } else if pedantic {
-                            // full blake3 integrity check if user requested pedantic update
-                            !file.verify_integrity(&path)
-                        } else {
-                            false // everything matches -> skip
-                        }
-                    }
+            } else if !pedantic {
+                // old behavior for check for updates button
+                if let Some(hash) = repo_cache.files.get(&file.path) {
+                    hash != &file.hash
                 } else {
-                    true // path invalid -> download
+                    true
                 }
             } else {
-                // file doesn't exist in cache at all -> download it
-                true
+                // current behavior only for pedantic
+                let path = ld_dir_path.as_ref().map(|p| p.join(&file.path));
+                let exists = path.as_ref().map(|p| p.is_file()).unwrap_or(false);
+
+                if exists && excludes.contains(&file.path) {
+                    // skip excluded files if they exist on disk
+                    false
+                } else if let Some(hash) = repo_cache.files.get(&file.path) {
+                    // get path or force download if path is invalid
+                    if let Some(path) = path {
+                        // file doesn't exist -> download
+                        if !exists {
+                            true
+                        } else {
+                            // fast size check to catch interrupted downloads
+                            let metadata = fs::metadata(&path).ok();
+                            let size_mismatch = metadata.map(|m| m.len() as usize != file.size).unwrap_or(true);
+            
+                            if size_mismatch {
+                                true // size mismatch -> redownload
+                            } else if hash != &file.hash {
+                                true // index hash changed -> update
+                            } else {
+                                // full blake3 integrity check if user requested pedantic update
+                                !file.verify_integrity(&path)
+                            }
+                        }
+                    } else {
+                        true // path invalid -> download
+                    }
+                } else {
+                    // file doesn't exist in cache at all -> download it
+                    true
+                }
             };
 
             if updated {
                 update_files.push(file.clone());
                 update_size += file.size;
             }
-            total_size += file.size;
         }
 
         if !update_files.is_empty() {
