@@ -40,6 +40,8 @@ mod StoryTimelineClipData;
 mod StoryTimelineCharaTrackData;
 mod CharacterNoteTopView;
 mod CharacterNoteTopViewController;
+mod CharacterHomeTopUI;
+mod CharacterHomeTopUIController;
 mod ViewControllerBase;
 mod ButtonCommon;
 mod NowLoading;
@@ -52,6 +54,11 @@ mod ApplicationSettingSaveLoader;
 mod LiveTheaterCharaSelect;
 mod LiveTheaterViewController;
 pub mod CySpringController;
+mod PartsGachaButton;
+mod PartsGachaButtonController;
+mod PartsHorizontalTextSet;
+mod GachaExecutableUnit;
+mod StoryChoiceButton;
 
 #[cfg(target_os = "windows")]
 pub mod SceneManager;
@@ -104,6 +111,8 @@ pub fn init() {
     StoryTimelineCharaTrackData::init(image);
     CharacterNoteTopView::init(image);
     CharacterNoteTopViewController::init(image);
+    CharacterHomeTopUI::init(image);
+    CharacterHomeTopUIController::init(image);
     ViewControllerBase::init(image);
     ButtonCommon::init(image);
     NowLoading::init(image);
@@ -116,6 +125,11 @@ pub fn init() {
     LiveTheaterCharaSelect::init(image);
     LiveTheaterViewController::init(image);
     CySpringController::init(image);
+    PartsGachaButton::init(image);
+    PartsGachaButtonController::init(image);
+    PartsHorizontalTextSet::init(image);
+    GachaExecutableUnit::init(image);
+    StoryChoiceButton::init(image);
 
     #[cfg(target_os = "windows")]
     {

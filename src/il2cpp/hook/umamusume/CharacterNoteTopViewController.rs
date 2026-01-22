@@ -1,10 +1,15 @@
 use crate::{
     core::{hachimi::UITextConfig, Hachimi},
     il2cpp::{
-    ext::StringExt, hook::{UnityEngine_CoreModule::{Component, GameObject}, UnityEngine_TextRenderingModule::TextAnchor, UnityEngine_UI::Text}, symbols::get_method_addr, types::*
+    ext::StringExt, hook::{UnityEngine_CoreModule::{Component, GameObject, RectTransform}, UnityEngine_TextRenderingModule::TextAnchor, UnityEngine_UI::Text}, symbols::get_method_addr, types::*
 }};
 
 use super::{ButtonCommon, CharacterNoteTopView, TextCommon, ViewControllerBase};
+use std::collections::HashMap;
+use std::sync::Mutex;
+use once_cell::sync::Lazy;
+
+static ORIGINAL_POSITIONS: Lazy<Mutex<HashMap<usize, Vector2_t>>> = Lazy::new(|| Mutex::new(HashMap::new()));
 
 type InitializeViewFn = extern "C" fn(this: *mut Il2CppObject) -> *mut Il2CppObject;
 extern "C" fn InitializeView(this: *mut Il2CppObject) -> *mut Il2CppObject {
@@ -49,6 +54,59 @@ fn apply_gallery_button_config(button: *mut Il2CppObject, config: &UITextConfig)
 
     if let Some(line_spacing) = config.line_spacing {
         Text::set_lineSpacing(target_text, line_spacing);
+    }
+    
+    // Apply position offset
+    if config.position_offset_x.is_some() || config.position_offset_y.is_some() {
+        let text_go = Component::get_gameObject(target_text);
+        if !text_go.is_null() {
+            let rt_type = RectTransform::type_object();
+            if rt_type.is_null() {
+                error!("  RectTransform type object is null!");
+                return;
+            }
+            
+            let rect_transform = GameObject::GetComponentInChildren(text_go, rt_type, true);
+            if !rect_transform.is_null() {
+                use crate::il2cpp::{ext::Il2CppObjectExt, symbols::get_method_addr};
+                let klass = unsafe { (*rect_transform).klass() };
+                
+                let get_anchored_pos_addr = get_method_addr(klass, c"get_anchoredPosition", 0);
+                let set_anchored_pos_addr = get_method_addr(klass, c"set_anchoredPosition", 1);
+                
+                if get_anchored_pos_addr != 0 && set_anchored_pos_addr != 0 {
+                    type GetAnchoredPositionFn = extern "C" fn(*mut Il2CppObject) -> Vector2_t;
+                    type SetAnchoredPositionFn = extern "C" fn(*mut Il2CppObject, Vector2_t);
+                    
+                    let get_anchored_pos: GetAnchoredPositionFn = unsafe { std::mem::transmute(get_anchored_pos_addr) };
+                    let set_anchored_pos: SetAnchoredPositionFn = unsafe { std::mem::transmute(set_anchored_pos_addr) };
+                    
+                    let mut anchored_pos = get_anchored_pos(rect_transform);
+                    
+                    // Use stored original position if available, otherwise store current as original
+                    let mut original_pos_map = ORIGINAL_POSITIONS.lock().unwrap();
+                    let base_pos_ref = original_pos_map.entry(rect_transform as usize).or_insert_with(|| {
+                        Vector2_t { x: anchored_pos.x, y: anchored_pos.y }
+                    });
+                    let (base_x, base_y) = (base_pos_ref.x, base_pos_ref.y);
+                    drop(original_pos_map);
+                    
+                    if let Some(ox) = config.position_offset_x {
+                        anchored_pos.x = base_x + ox;
+                    } else {
+                        anchored_pos.x = base_x;
+                    }
+                    
+                    if let Some(oy) = config.position_offset_y {
+                        anchored_pos.y = base_y + oy;
+                    } else {
+                        anchored_pos.y = base_y;
+                    }
+                    
+                    set_anchored_pos(rect_transform, anchored_pos);
+                }
+            }
+        }
     }
 }
 

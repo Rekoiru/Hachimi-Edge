@@ -3,20 +3,114 @@ use std::ptr::null_mut;
 use crate::{
     core::Hachimi,
     il2cpp::{
-        ext::{Il2CppStringExt, StringExt}, hook::UnityEngine_TextRenderingModule::TextGenerator::IgnoreTGFiltersContext, symbols::{get_field_from_name, get_field_object_value, get_method_addr, set_field_object_value}, types::*
+        ext::{Il2CppStringExt, StringExt}, 
+        hook::UnityEngine_TextRenderingModule::TextGenerator::IgnoreTGFiltersContext, 
+        symbols::{get_field_from_name, get_field_object_value, get_method_addr, set_field_object_value}, 
+        types::*
     }
 };
 
 static mut TEXT_FIELD: *mut FieldInfo = null_mut();
-fn get__text(this: *mut Il2CppObject) -> *mut Il2CppString {
-    get_field_object_value(this, unsafe { TEXT_FIELD })
+
+pub fn get__text(this: *mut Il2CppObject) -> *mut Il2CppString {
+    let field = unsafe { TEXT_FIELD };
+    if this.is_null() || field.is_null() { return null_mut(); }
+    get_field_object_value(this, field)
 }
 
 fn set__text(this: *mut Il2CppObject, value: *mut Il2CppString) {
     set_field_object_value(this, unsafe { TEXT_FIELD }, value);
 }
 
+// Platform-specific function signatures
+#[cfg(target_os = "android")]
+type SetTextLinespaceFn = extern "C" fn(this: *mut Il2CppObject, value: f32);
+#[cfg(not(target_os = "android"))]
+type SetTextLinespaceFn = extern "C" fn(this: *mut Il2CppObject, value: f32, method: usize);
+
+#[cfg(target_os = "android")]
+type SetTextOffsetFn = extern "C" fn(this: *mut Il2CppObject, value: Vector2_t);
+#[cfg(not(target_os = "android"))]
+type SetTextOffsetFn = extern "C" fn(this: *mut Il2CppObject, value: Vector2_t, method: usize);
+
+#[cfg(target_os = "android")]
+type _UpdatePositionFn = extern "C" fn(this: *mut Il2CppObject);
+#[cfg(not(target_os = "android"))]
+type _UpdatePositionFn = extern "C" fn(this: *mut Il2CppObject, method: usize);
+
+#[cfg(target_os = "android")]
 type _UpdateTextFn = extern "C" fn(this: *mut Il2CppObject);
+#[cfg(not(target_os = "android"))]
+type _UpdateTextFn = extern "C" fn(this: *mut Il2CppObject, method: usize);
+
+// Public wrapper functions
+static mut SET_TEXT_LINESPACE_ADDR: usize = 0;
+pub fn SetTextLinespace(this: *mut Il2CppObject, value: f32) {
+    if this.is_null() || unsafe { SET_TEXT_LINESPACE_ADDR } == 0 { return; }
+    unsafe {
+        #[cfg(target_os = "android")]
+        {
+            let orig_fn: SetTextLinespaceFn = std::mem::transmute(SET_TEXT_LINESPACE_ADDR);
+            orig_fn(this, value);
+        }
+        #[cfg(not(target_os = "android"))]
+        {
+            let orig_fn: SetTextLinespaceFn = std::mem::transmute(SET_TEXT_LINESPACE_ADDR);
+            orig_fn(this, value, SET_TEXT_LINESPACE_ADDR);
+        }
+    }
+}
+
+static mut SET_TEXT_OFFSET_ADDR: usize = 0;
+pub fn SetTextOffset(this: *mut Il2CppObject, value: Vector2_t) {
+    if this.is_null() || unsafe { SET_TEXT_OFFSET_ADDR } == 0 { return; }
+    unsafe {
+        #[cfg(target_os = "android")]
+        {
+            let orig_fn: SetTextOffsetFn = std::mem::transmute(SET_TEXT_OFFSET_ADDR);
+            orig_fn(this, value);
+        }
+        #[cfg(not(target_os = "android"))]
+        {
+            let orig_fn: SetTextOffsetFn = std::mem::transmute(SET_TEXT_OFFSET_ADDR);
+            orig_fn(this, value, SET_TEXT_OFFSET_ADDR);
+        }
+    }
+}
+
+static mut _UPDATE_POSITION_ADDR: usize = 0;
+pub fn _UpdatePosition(this: *mut Il2CppObject) {
+    if this.is_null() || unsafe { _UPDATE_POSITION_ADDR } == 0 { return; }
+    unsafe {
+        #[cfg(target_os = "android")]
+        {
+            let orig_fn: _UpdatePositionFn = std::mem::transmute(_UPDATE_POSITION_ADDR);
+            orig_fn(this);
+        }
+        #[cfg(not(target_os = "android"))]
+        {
+            let orig_fn: _UpdatePositionFn = std::mem::transmute(_UPDATE_POSITION_ADDR);
+            orig_fn(this, _UPDATE_POSITION_ADDR);
+        }
+    }
+}
+
+// hooks - SetTextLinespace hook only on PC
+#[cfg(not(target_os = "android"))]
+extern "C" fn SetTextLinespaceHook(this: *mut Il2CppObject, value: f32, method: usize) {
+    get_orig_fn!(SetTextLinespaceHook, SetTextLinespaceFn)(this, value, method);
+}
+
+#[cfg(target_os = "android")]
+extern "C" fn SetTextOffsetHook(this: *mut Il2CppObject, value: Vector2_t) {
+    get_orig_fn!(SetTextOffsetHook, SetTextOffsetFn)(this, value);
+}
+#[cfg(not(target_os = "android"))]
+extern "C" fn SetTextOffsetHook(this: *mut Il2CppObject, value: Vector2_t, method: usize) {
+    get_orig_fn!(SetTextOffsetHook, SetTextOffsetFn)(this, value, method);
+}
+
+#[cfg(target_os = "android")]
 extern "C" fn _UpdateText(this: *mut Il2CppObject) {
     let text_ptr = get__text(this);
     if text_ptr.is_null() {
@@ -25,7 +119,6 @@ extern "C" fn _UpdateText(this: *mut Il2CppObject) {
 
     let text = unsafe { (*text_ptr).as_utf16str() };
 
-    // doesn't run through TextGenerator, ignore its filters
     if text.as_slice().contains(&36) { // 36 = dollar sign ($)
         set__text(this, Hachimi::instance().template_parser
             .eval_with_context(&text.to_string(), &mut IgnoreTGFiltersContext())
@@ -35,14 +128,54 @@ extern "C" fn _UpdateText(this: *mut Il2CppObject) {
     get_orig_fn!(_UpdateText, _UpdateTextFn)(this);
 }
 
-pub fn init(Plugins: *const Il2CppImage) {
-    get_class_or_return!(Plugins, AnimateToUnity, AnText);
+#[cfg(not(target_os = "android"))]
+extern "C" fn _UpdateText(this: *mut Il2CppObject, method: usize) {
+    let text_ptr = get__text(this);
+    if text_ptr.is_null() {
+        return get_orig_fn!(_UpdateText, _UpdateTextFn)(this, method);
+    }
+
+    let text = unsafe { (*text_ptr).as_utf16str() };
+
+    if text.as_slice().contains(&36) { // 36 = dollar sign ($)
+        set__text(this, Hachimi::instance().template_parser
+            .eval_with_context(&text.to_string(), &mut IgnoreTGFiltersContext())
+            .to_il2cpp_string());
+    }
+    
+    get_orig_fn!(_UpdateText, _UpdateTextFn)(this, method);
+}
+
+#[cfg(target_os = "android")]
+extern "C" fn _UpdatePositionHook(this: *mut Il2CppObject) {
+    get_orig_fn!(_UpdatePositionHook, _UpdatePositionFn)(this);
+}
+#[cfg(not(target_os = "android"))]
+extern "C" fn _UpdatePositionHook(this: *mut Il2CppObject, method: usize) {
+    get_orig_fn!(_UpdatePositionHook, _UpdatePositionFn)(this, method);
+}
+
+pub fn init(image: *const Il2CppImage) {
+    get_class_or_return!(image, AnimateToUnity, AnText);
 
     let _UpdateText_addr = get_method_addr(AnText, c"_UpdateText", 0);
-
     new_hook!(_UpdateText_addr, _UpdateText);
+
+    let _UpdatePosition_addr = get_method_addr(AnText, c"_UpdatePosition", 0);
+    new_hook!(_UpdatePosition_addr, _UpdatePositionHook);
+
+    let SetTextLinespace_addr = get_method_addr(AnText, c"SetTextLinespace", 1);
+    // we disable SetTextLinespace on Android (causes crashes)
+    #[cfg(not(target_os = "android"))]
+    new_hook!(SetTextLinespace_addr, SetTextLinespaceHook);
+
+    let SetTextOffset_addr = get_method_addr(AnText, c"SetTextOffset", 1);
+    new_hook!(SetTextOffset_addr, SetTextOffsetHook);
 
     unsafe {
         TEXT_FIELD = get_field_from_name(AnText, c"_text");
+        SET_TEXT_LINESPACE_ADDR = SetTextLinespace_addr;
+        SET_TEXT_OFFSET_ADDR = SetTextOffset_addr;
+        _UPDATE_POSITION_ADDR = _UpdatePosition_addr;
     }
 }

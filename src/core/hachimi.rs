@@ -649,6 +649,7 @@ pub struct LocalizedDataConfig {
     pub story_line_count_offset: Option<i32>,
     pub text_frame_line_spacing_multiplier: Option<f32>,
     pub text_frame_font_size_multiplier: Option<f32>,
+    pub story_choice_multi_line: Option<UITextConfig>,
     #[serde(default)]
     pub skill_formatting: SkillFormatting,
     #[serde(default)]
@@ -661,6 +662,9 @@ pub struct LocalizedDataConfig {
     pub character_note_top_gallery_button: Option<UITextConfig>,
     pub character_note_top_talk_gallery_button: Option<UITextConfig>,
 
+    pub buttons_override: Option<ButtonOverrides>,
+    pub gacha_buttons_override: Option<GachaButtonOverrides>,
+
     pub news_url: Option<String>,
 
     // RESERVED
@@ -669,10 +673,45 @@ pub struct LocalizedDataConfig {
 }
 
 #[derive(Deserialize, Clone)]
+pub struct GachaButtonOverrides {
+    pub gacha_button_1: Option<UITextConfig>,
+    pub gacha_button_10: Option<UITextConfig>,
+    pub gacha_button_daily: Option<UITextConfig>,
+    pub gacha_button_free: Option<UITextConfig>,
+    pub gacha_button_paid: Option<UITextConfig>,
+    pub gacha_button_2: Option<UITextConfig>,
+    pub gacha_button_3: Option<UITextConfig>,
+    pub gacha_button_5: Option<UITextConfig>,
+}
+
+#[derive(Deserialize, Clone)]
+pub struct ButtonOverrides {
+    pub character_home_top_card_root_button: Option<UITextConfig>,
+    pub character_home_top_support_card_root_button: Option<UITextConfig>,
+    pub character_home_top_trained_chara_root_button: Option<UITextConfig>,
+    pub character_home_top_character_card_catalog_button: Option<UITextConfig>,
+    pub character_home_top_card_lv_up_button: Option<UITextConfig>,
+    pub character_home_top_hint_lv_up_button: Option<UITextConfig>,
+    pub character_home_top_card_limit_break_button: Option<UITextConfig>,
+    pub character_home_top_piece_exchange_button: Option<UITextConfig>,
+    pub character_home_top_support_edit_button: Option<UITextConfig>,
+    pub character_home_top_support_sell_button: Option<UITextConfig>,
+    pub character_home_top_support_list_button: Option<UITextConfig>,
+    pub character_home_top_trained_list_button: Option<UITextConfig>,
+    pub character_home_top_new_team_edit_button: Option<UITextConfig>,
+    pub character_home_top_transfer_button: Option<UITextConfig>,
+}
+
+#[derive(Deserialize, Clone)]
 pub struct UITextConfig {
     pub text: Option<String>,
+    pub text2: Option<String>,
     pub font_size: Option<i32>,
-    pub line_spacing: Option<f32>
+    pub line_spacing: Option<f32>,
+    pub position_offset_x: Option<f32>,
+    pub position_offset_y: Option<f32>,
+    pub position_offset_x2: Option<f32>,
+    pub position_offset_y2: Option<f32>
 }
 
 impl Default for LocalizedDataConfig {
