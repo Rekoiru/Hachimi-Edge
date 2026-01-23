@@ -56,14 +56,14 @@ extern "C" fn SetTextStatic(an_text: *mut Il2CppObject, text_ptr: *mut Il2CppStr
                 };
 
                 if let Some(ls) = config.line_spacing {
-                    AnText::SetTextLinespace(an_text, ls);
+                    AnText::set__lineSpace(an_text, ls);
                 }
-                AnText::SetTextOffset(an_text, offset);
+                AnText::set__textOffset(an_text, offset);
                 AnText::_UpdatePosition(an_text);
             } else {
                 // Reset for non-multi-line text (Pooling fix)
-                AnText::SetTextLinespace(an_text, 0.772);
-                AnText::SetTextOffset(an_text, Vector2_t { x: 0.0, y: 0.0 });
+                AnText::set__lineSpace(an_text, 0.772);
+                AnText::set__textOffset(an_text, Vector2_t { x: 0.0, y: 0.0 });
                 AnText::_UpdatePosition(an_text);
             }
         }
@@ -90,38 +90,38 @@ fn apply_multi_line_fix(this: *mut Il2CppObject, text_ptr: *mut Il2CppString) {
             };
 
             if let Some(ls) = config.line_spacing {
-                if !normal_text.is_null() { AnText::SetTextLinespace(normal_text, ls); }
-                if !push_text.is_null() { AnText::SetTextLinespace(push_text, ls); }
-                if !outline_text.is_null() { AnText::SetTextLinespace(outline_text, ls); }
+                if !normal_text.is_null() { AnText::set__lineSpace(normal_text, ls); }
+                if !push_text.is_null() { AnText::set__lineSpace(push_text, ls); }
+                if !outline_text.is_null() { AnText::set__lineSpace(outline_text, ls); }
             }
             
             if !normal_text.is_null() { 
-                AnText::SetTextOffset(normal_text, Vector2_t { x: offset.x, y: offset.y }); 
+                AnText::set__textOffset(normal_text, Vector2_t { x: offset.x, y: offset.y }); 
                 AnText::_UpdatePosition(normal_text);
             }
             if !push_text.is_null() { 
-                AnText::SetTextOffset(push_text, Vector2_t { x: offset.x, y: offset.y }); 
+                AnText::set__textOffset(push_text, Vector2_t { x: offset.x, y: offset.y }); 
                 AnText::_UpdatePosition(push_text);
             }
             if !outline_text.is_null() { 
-                AnText::SetTextOffset(outline_text, Vector2_t { x: offset.x, y: offset.y }); 
+                AnText::set__textOffset(outline_text, Vector2_t { x: offset.x, y: offset.y }); 
                 AnText::_UpdatePosition(outline_text);
             }
         } else {
             // Reset for single-line text (Pooling fix)
             if !normal_text.is_null() {
-                AnText::SetTextLinespace(normal_text, 0.772);
-                AnText::SetTextOffset(normal_text, Vector2_t { x: 0.0, y: 0.0 });
+                AnText::set__lineSpace(normal_text, 0.772);
+                AnText::set__textOffset(normal_text, Vector2_t { x: 0.0, y: 0.0 });
                 AnText::_UpdatePosition(normal_text);
             }
             if !push_text.is_null() {
-                AnText::SetTextLinespace(push_text, 0.772);
-                AnText::SetTextOffset(push_text, Vector2_t { x: 0.0, y: 0.0 });
+                AnText::set__lineSpace(push_text, 0.772);
+                AnText::set__textOffset(push_text, Vector2_t { x: 0.0, y: 0.0 });
                 AnText::_UpdatePosition(push_text);
             }
             if !outline_text.is_null() {
-                AnText::SetTextLinespace(outline_text, 0.772);
-                AnText::SetTextOffset(outline_text, Vector2_t { x: 0.0, y: 0.0 });
+                AnText::set__lineSpace(outline_text, 0.772);
+                AnText::set__textOffset(outline_text, Vector2_t { x: 0.0, y: 0.0 });
                 AnText::_UpdatePosition(outline_text);
             }
         }
