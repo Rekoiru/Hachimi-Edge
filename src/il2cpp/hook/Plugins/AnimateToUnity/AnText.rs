@@ -14,7 +14,7 @@ use crate::{
 static mut LINESPACE_FIELD: *mut FieldInfo = null_mut();
 pub fn set__lineSpace(this: *mut Il2CppObject, lineSpace: f32)  {
     set_field_value(this, unsafe { LINESPACE_FIELD }, &lineSpace);
-    _UpdateText(this);
+    _UpdateTextWrapper(this);
 }
 
 static mut TEXT_OFFSET_FIELD: *mut FieldInfo = null_mut();
@@ -65,6 +65,23 @@ pub fn _UpdatePosition(this: *mut Il2CppObject) {
         {
             let orig_fn: _UpdatePositionFn = std::mem::transmute(_UPDATE_POSITION_ADDR);
             orig_fn(this, _UPDATE_POSITION_ADDR);
+        }
+    }
+}
+
+static mut _UPDATE_TEXT_ADDR: usize = 0;
+fn _UpdateTextWrapper(this: *mut Il2CppObject) {
+    if this.is_null() || unsafe { _UPDATE_TEXT_ADDR } == 0 { return; }
+    unsafe {
+        #[cfg(target_os = "android")]
+        {
+            let orig_fn: _UpdateTextFn = std::mem::transmute(_UPDATE_TEXT_ADDR);
+            orig_fn(this);
+        }
+        #[cfg(not(target_os = "android"))]
+        {
+            let orig_fn: _UpdateTextFn = std::mem::transmute(_UPDATE_TEXT_ADDR);
+            orig_fn(this, _UPDATE_TEXT_ADDR);
         }
     }
 }
@@ -137,6 +154,7 @@ pub fn init(image: *const Il2CppImage) {
         TEXT_OFFSET_FIELD = get_field_from_name(AnText, c"_textOffset");
         LINESPACE_FIELD = get_field_from_name(AnText, c"_lineSpace");
         TEXT_FIELD = get_field_from_name(AnText, c"_text");
+        _UPDATE_TEXT_ADDR = _UpdateText_addr;
         _UPDATE_POSITION_ADDR = _UpdatePosition_addr;
     }
 }
