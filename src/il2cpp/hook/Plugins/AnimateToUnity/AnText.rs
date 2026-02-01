@@ -105,6 +105,7 @@ extern "C" fn _UpdateText(this: *mut Il2CppObject) {
 
     let text = unsafe { (*text_ptr).as_utf16str() };
 
+    // doesn't run through TextGenerator, ignore its filters
     if text.as_slice().contains(&36) { // 36 = dollar sign ($)
         set__text(this, Hachimi::instance().template_parser
             .eval_with_context(&text.to_string(), &mut IgnoreTGFiltersContext())
