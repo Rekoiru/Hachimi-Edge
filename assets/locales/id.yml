@@ -1,4 +1,4 @@
-hachimi: "Hachimi"
+hachimi: "Hachimi Edge"
 
 windows:
   menu_open_key: "Arrow Key - Kanan"
@@ -20,13 +20,13 @@ retry: "Ulangi"
 default: "Default"
 off: "Mati"
 on: "Nyala"
-enable: "Nyala"
+enable: "Nyalakan"
 info: "Info"
 warning: "Peringatan"
 confirm_dialog_title: "Konfirmasi"
 soft_restart_confirm_content: "Apa kamu yakin ingin memulai ulang ringan game?"
-in_game_browser_confirm_content: "Apa kamu yakin ingin buka peramban web dalam game?"
-browser_dialog_title: "Peramban Web"
+in_game_browser_confirm_content: "Apa kamu yakin ingin buka browser dalam game?"
+browser_dialog_title: "Browser"
 
 menu:
   fps_text: "FPS: %{fps}"
@@ -35,17 +35,17 @@ menu:
   localize_dict_entries: "entri localize_dict: %{count}"
   hashed_dict_entries: "entri hashed_dict: %{count}"
   config_heading: "\uf0ad Konfigurasi"
-  open_config_editor: "\uf040 Buka editor konfig."
-  reload_config: "\uf021 Muat ulang konfig."
+  open_config_editor: "\uf040 Buka editor konfig"
+  reload_config: "\uf021 Muat ulang konfig"
   open_first_time_setup: "\uf135 Setup pertama kali"
-  graphics_heading: "\uf03e Grafik"
+  graphics_heading: "\uf03e Grafis"
   fps_label: "FPS"
   vsync_label: "VSync"
   stay_on_top: "Sematkan di atas"
   translation_heading: "\uf02d Translasi"
   reload_localized_data: "\uf021 Muat ulang data lokalisasi"
-  check_for_updates: "\uf0aa Cek pembaruan"
-  check_for_updates_pedantic: "\uf0aa Cek pembaruan (pedantik/ketat)"
+  check_for_updates: "\uf0aa Periksa pembaruan"
+  check_for_updates_pedantic: "\uf0aa Periksa pembaruan (pedantik/ketat)"
   dump_localize_dict: "Ekstrak localize_dump"
   danger_zone_heading: "\uf071 Zona Rawan"
   danger_zone_warning: "Hati-hati!\nMenggunakan opsi di bawah akan membuat game tidak stabil."
@@ -84,8 +84,8 @@ first_time_setup:
     bersedia menerima segala risiko yang ada apabila melanjutkan.
   translation_repo_heading: "Repositori Translasi"
   select_translation_repo: "Mohon pilih repositori translasi:"
-  no_compatible_repo: "Tidak ada repositori yang didukung oleh versi game ini."
-  skip_translation: "Lewati."
+  no_compatible_repo: "Tidak ada repositori yang didukung oleh versi game ini"
+  skip_translation: "Lewati translasi."
   complete_heading: "Selesai!"
   complete_content: >-
     Klik Selesai untuk menyimpan konfigurasi.
@@ -93,7 +93,7 @@ first_time_setup:
 
 about:
   title: "Tentang"
-  copyright: "© 2024-%{year} LeadRDRK dan kontributor"
+  copyright: "© 2024-%{year} LeadRDRK, kairusds dan kontributor"
   view_license: "Lihat lisensi"
   check_for_updates: "Cek pembaruan"
 
@@ -107,8 +107,8 @@ tl_updater:
 config_editor:
   title: "Editor Konfigurasi"
   general_tab: "\uf013 Umum"
-  graphics_tab: "\uf03e Grafik"
-  gameplay_tab: "\uf11b Game"
+  graphics_tab: "\uf03e Grafis"
+  gameplay_tab: "\uf11b Gameplay"
   language: "Bahasa"
   restore_defaults: "Kembalikan semula"
   disable_overlay: "Matikan overlay (GUI)"
@@ -117,13 +117,13 @@ config_editor:
     Kamu tidak bisa mengakses editor konfigurasi setelah kamu memulai ulang game.
     Jika tidak disengaja dinyalakan, mohon tutup dialog ini dan matikan opsinya!
   debug_mode: "Mode Debug"
-  translator_mode: "Mode Translasi"
+  translator_mode: "Mode Translator"
   skip_first_time_setup: "Lewati setup\npertama kali"
   disable_auto_update_check: "Matikan cek\npembaruan otomatis"
   disable_translations: "Matikan translasi"
   enable_ipc: "Nyalakan IPC"
-  ipc_listen_all: "Buka port listen-all IPC"
-  auto_translate_stories: "Otomatis terjemahkan\ncerita"
+  ipc_listen_all: "Buka IPC listen-all"
+  auto_translate_stories: "Otomatis terjemahkan cerita"
   auto_tl_warning: >-
     Menyalakan opsi ini membutuhkan penyedia translasi yang kompatibel untuk
     dipasang di komputer kamu atau layanan cloud yang menggunakan framework
@@ -132,11 +132,11 @@ config_editor:
     jika kamu tidak memilikki penyedia/framework translasi yang terinstal.
   auto_translate_ui: "Otomatis terjemahkan UI\n(RAWAN ERROR)"
   target_fps: "Target FPS"
-  virtual_resolution_multiplier: "Kelipatan\nresolusi virtual"
+  virtual_resolution_multiplier: "Kelipatan resolusi virtual"
   ui_scale: "Skala UI"
   gui_scale: "Skala overlay"
   ui_animation_scale: "Skala animasi UI"
-  graphics_quality: "Kualitas grafik"
+  graphics_quality: "Kualitas grafis"
   vsync: "VSync"
   auto_full_screen: "Otomatis Layar penuh"
   full_screen_mode: "Mode Layar penuh"
@@ -165,6 +165,7 @@ config_editor:
   msaa: "MSAA"
   render_scale: "Skala render"
   aniso_level: "Filter Anisotropik"
+  shadow_resolution: "Resolusi Bayangan"
 
 tl_update_dialog:
   title: "Pembaruan Translasi Tersedia"
@@ -182,10 +183,10 @@ updating_dialog:
 steam_overlay_conflict_dialog:
   title: "Peringatan"
   content: >-
-    Pembelian mungkin gagal dengan overlay Hachimi yang menyala. Jika overlay Steam muncul saat melakukan 
-    transaksi, mohon abaikan pesan ini dan klik tombol Tidak. Jika tidak berfungsi, mohon tekan tombol Ya
-    untuk mulai ulang dan overlay Hachimi akan dimatikan dan kamu bisa melakukan pembelian. Setelah itu kamu 
-    bisa menyalakan ulang game kembali setelahnya untuk mengaktifkan Hachimi.
+    Pembelian mungkin tidak bekerja saat overlay Hachimi menyala. Jika overlay Steam muncul saat melakukan 
+    transaksi, mohon abaikan pesan ini dan klik tombol Tidak. Jika tidak berfungsi, klik tombol Ya untuk 
+    mematikan sementara overlay Hachimi. Game akan dimulai ulang kemudian overlay Hachimi akan mati dan kamu
+    bisa melakukan pembelian lagi, setelah itu mulai ulang game untuk menyalakan kembali overlay Hachimi.
 key_names:
   left: "Panah Kiri"
   right: "Panah Kanan"

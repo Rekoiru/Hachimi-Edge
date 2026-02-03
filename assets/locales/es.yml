@@ -1,4 +1,4 @@
-hachimi: "Hachimi"
+hachimi: "Hachimi Edge"
 
 windows:
   menu_open_key: "Flecha Derecha"
@@ -43,7 +43,7 @@ menu:
   vsync_label: "VSync"
   stay_on_top: "Siempre visible"
   translation_heading: "\uf02d Traducción"
-  reload_localized_data: "\uf021 Recargar datos localizados"
+  reload_localized_data: "\uf021 Recargar localización"
   check_for_updates: "\uf0aa Buscar actualizaciones"
   check_for_updates_pedantic: "\uf0aa Buscar actualizaciones (exhaustivo)"
   dump_localize_dict: "Exportar localize dict"
@@ -55,20 +55,20 @@ menu:
   discord_rpc: "Discord RPC"
 
 notification:
-  saved_localize_dump: "Guardado en localize_dump.json"
+  saved_localize_dump: "Exportado en localize_dump.json"
   config_reloaded: "Configuración recargada."
   config_saved: "Configuración guardada."
-  localized_data_reloaded: "Datos localizados recargados."
-  checking_for_tl_updates: "Buscando actualizaciones para traducciones..."
-  no_tl_updates: "No se han encontrado actualizaciones."
+  localized_data_reloaded: "Localización recargada."
+  checking_for_tl_updates: "Buscando actualizaciones de traducción..."
+  no_tl_updates: "No hay actualizaciones."
   update_failed: "Actualización fallida: %{reason}"
   update_completed: "Actualización completada."
-  errors_during_update: "Han ocurrido %{count} errores mientras se actualizaba. Comprueba los registros para más detalles."
+  errors_during_update: "Se produjeron errores al actualizar (%{count}). Comprueba los registros para más detalles."
   checking_for_updates: "Buscando actualizaciones..."
   no_updates: "No hay actualizaciones."
   press_to_set_menu_key: "Pulsa una tecla para establecer la tecla que abre el menú."
   menu_open_key_set: "Tecla para abrir el menú: %{key}"
-  ipc_softreset_exec: "Reinicio suave (IPC) ejecutado con éxito."
+  ipc_softreset_exec: "Reinicio suave remoto (IPC) ejecutado con éxito."
 
 
 first_time_setup:
@@ -96,7 +96,7 @@ first_time_setup:
 
 about:
   title: "Acerca de"
-  copyright: "© 2024-%{year} LeadRDRK y contribuidores"
+  copyright: "© 2024-%{year} LeadRDRK, kairusds y contribuidores"
   view_license: "Ver licencia"
   check_for_updates: "Buscar actualizaciones"
 
@@ -122,11 +122,11 @@ config_editor:
   debug_mode: "Modo depuración"
   translator_mode: "Modo traductor"
   skip_first_time_setup: "Omitir instalación inicial"
-  disable_auto_update_check: "Desactivar búsquedas\nde actualizaciones"
+  disable_auto_update_check: "Desactivar la búsqueda\nde actualizaciones"
   disable_translations: "Desactivar traducciones"
   enable_ipc: "Habilitar IPC"
   ipc_listen_all: "IPC escuchar todo"
-  auto_translate_stories: "Traducir historias\nautomáticamente"
+  auto_translate_stories: "Auto-traducir\nhistorias"
   auto_tl_warning: >-
     Esta opción requiere que tengas instalado un servidor compatible y que sea
     capaz de enviar el contenido traducido al cliente tanto localmente como en
@@ -169,11 +169,12 @@ config_editor:
   menu_open_key_set: "Establecer"
   render_scale: "Escala de renderizado"
   aniso_level: "Filtrado anisotrópico"
+  shadow_resolution: "Resolución de\nlas sombras"
 
 tl_update_dialog:
   title: "Nueva actualización disponible"
-  content: "Existen nuevos datos de traducción (%{size}). ¿Deseas descargarlos ahora?"
-  content_zip_warning: "Existen nuevos datos de traducción (%{changed_size}). Esta actualización descargará el archivo completo (%{download_size})."
+  content: "Existen nuevos datos de traducción (%{size}).\n¿Deseas descargarlos ahora?"
+  content_zip_warning: "Existen nuevos datos de traducción (%{changed_size}).\nEsta actualización descargará el archivo completo (%{download_size})."
 
 update_prompt_dialog:
   title: "Nueva actualización disponible"

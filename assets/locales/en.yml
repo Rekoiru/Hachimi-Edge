@@ -1,4 +1,4 @@
-hachimi: "Hachimi"
+hachimi: "Hachimi Edge"
 
 windows:
   menu_open_key: "Right arrow"
@@ -93,7 +93,7 @@ first_time_setup:
 
 about:
   title: "About"
-  copyright: "© 2024-%{year} LeadRDRK and contributors"
+  copyright: "© 2024-%{year} LeadRDRK, kairusds and contributors"
   view_license: "View license"
   check_for_updates: "Check for updates"
 
@@ -165,6 +165,7 @@ config_editor:
   msaa: "MSAA"
   render_scale: "Render Scale"
   aniso_level: "Anisotropic Filtering"
+  shadow_resolution: "Shadow Resolution"
 
 tl_update_dialog:
   title: "New update available"

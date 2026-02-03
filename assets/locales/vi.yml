@@ -1,4 +1,4 @@
-hachimi: "Hachimi"
+hachimi: "Hachimi Edge"
 
 windows:
   menu_open_key: "Mũi tên phải"
@@ -83,7 +83,7 @@ first_time_setup:
 
 about:
   title: "Giới thiệu"
-  copyright: "© 2024-%{year} LeadRDRK and contributors"
+  copyright: "© 2024-%{year} LeadRDRK, kairusds and contributors"
   view_license: "Xem bản quyền"
   check_for_updates: "Kiểm tra cập nhật"
 
@@ -144,6 +144,7 @@ config_editor:
   menu_open_key_set: "Nhấn để thiết lập"
   render_scale: "Tỷ lệ kết xuất"
   aniso_level: "Lọc dị hướng"
+  shadow_resolution: "Độ phân giải bóng đổ"
 
 tl_update_dialog:
   title: "Bản cập nhật mới"

@@ -52,6 +52,7 @@ mod ApplicationSettingSaveLoader;
 mod LiveTheaterCharaSelect;
 mod LiveTheaterViewController;
 pub mod CySpringController;
+pub mod CameraData;
 mod CharacterHomeTopUI;
 mod CharacterHomeTopUIController;
 mod PartsGachaButton;
@@ -137,4 +138,5 @@ pub fn init() {
         PaymentUtility::init(image);
     }
     LowResolutionCamera::init(image);
+    CameraData::init(image);
 }
