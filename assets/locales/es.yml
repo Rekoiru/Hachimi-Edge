@@ -120,6 +120,7 @@ config_editor:
     Esto se traduce en que NO podrás acceder al Editor de Configuración tras ello.
     Si no es un cambio intencional, cierra este diálogo y DESACTIVA esta opción.
   debug_mode: "Modo depuración"
+  enable_file_logging: "Guardar registro\nen un archivo"
   translator_mode: "Modo traductor"
   skip_first_time_setup: "Omitir instalación inicial"
   disable_auto_update_check: "Desactivar la búsqueda\nde actualizaciones"
