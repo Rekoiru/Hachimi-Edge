@@ -678,6 +678,7 @@ pub struct LocalizedDataConfig {
 
 #[derive(Deserialize, Clone)]
 pub struct GachaButtonOverrides {
+    pub gacha_button_default: Option<UITextConfig>,
     pub gacha_button_1: Option<UITextConfig>,
     pub gacha_button_10: Option<UITextConfig>,
     pub gacha_button_daily: Option<UITextConfig>,

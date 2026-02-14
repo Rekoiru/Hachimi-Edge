@@ -39,7 +39,7 @@ fn apply_gacha_button_config(this: *mut Il2CppObject, executable: *mut Il2CppObj
     let Some(gacha_overrides) = config.gacha_buttons_override.as_ref() else { return };
     
     let button_config = select_button_config(executable, gacha_overrides);
-    let Some(cfg) = button_config else { return };
+    let Some((cfg, cfg_name)) = button_config else { return };
     
     let text_set = PartsGachaButton::get_drawCountTextSet(this);
     let daily_set = PartsGachaButton::get_dailyTextSet(this);
@@ -47,9 +47,11 @@ fn apply_gacha_button_config(this: *mut Il2CppObject, executable: *mut Il2CppObj
     
     let is_daily = GachaExecutableUnit::get_IsDaily(executable);
     
+    let draw_count = GachaExecutableUnit::get_DrawCount(executable);
+    
     // apply text config
     if let Some(main_label) = find_main_label(text_set, daily_set, draw_count_text, is_daily) {
-        apply_text_configuration(main_label, text_set, daily_set, cfg);
+        apply_text_configuration(main_label, text_set, daily_set, cfg, cfg_name, draw_count);
     }
     
     // apply position offsets
@@ -59,7 +61,7 @@ fn apply_gacha_button_config(this: *mut Il2CppObject, executable: *mut Il2CppObj
 fn select_button_config<'a>(
     executable: *mut Il2CppObject, 
     gacha_overrides: &'a crate::core::hachimi::GachaButtonOverrides
-) -> Option<&'a UITextConfig> {
+) -> Option<(&'a UITextConfig, &'static str)> {
     let is_daily = GachaExecutableUnit::get_IsDaily(executable);
     let is_free = GachaExecutableUnit::get_IsFree(executable);
     let is_paid = GachaExecutableUnit::get_IsPaid(executable);
@@ -68,31 +70,41 @@ fn select_button_config<'a>(
     // priority is daily > free > paid > count-based
     if is_daily {
         if let Some(cfg) = gacha_overrides.gacha_button_daily.as_ref() {
-            return Some(cfg);
+            return Some((cfg, "gacha_button_daily"));
         }
     }
     
     if is_free {
         if let Some(cfg) = gacha_overrides.gacha_button_free.as_ref() {
-            return Some(cfg);
+            return Some((cfg, "gacha_button_free"));
         }
     }
     
     if is_paid {
         if let Some(cfg) = gacha_overrides.gacha_button_paid.as_ref() {
-            return Some(cfg);
+            return Some((cfg, "gacha_button_paid"));
         }
     }
     
     // count selection
-    match draw_count {
-        10 => gacha_overrides.gacha_button_10.as_ref(),
-        5 => gacha_overrides.gacha_button_5.as_ref(),
-        3 => gacha_overrides.gacha_button_3.as_ref(),
-        2 => gacha_overrides.gacha_button_2.as_ref(),
-        1 => gacha_overrides.gacha_button_1.as_ref(),
+    let count_config = match draw_count {
+        10 => gacha_overrides.gacha_button_10.as_ref().map(|cfg| (cfg, "gacha_button_10")),
+        5 => gacha_overrides.gacha_button_5.as_ref().map(|cfg| (cfg, "gacha_button_5")),
+        3 => gacha_overrides.gacha_button_3.as_ref().map(|cfg| (cfg, "gacha_button_3")),
+        2 => gacha_overrides.gacha_button_2.as_ref().map(|cfg| (cfg, "gacha_button_2")),
+        1 => gacha_overrides.gacha_button_1.as_ref().map(|cfg| (cfg, "gacha_button_1")),
         _ => None
+    };
+
+    if count_config.is_some() {
+        return count_config;
     }
+
+    if let Some(cfg) = gacha_overrides.gacha_button_default.as_ref() {
+        return Some((cfg, "gacha_button_default"));
+    }
+
+    None
 }
 
 fn find_main_label(
@@ -189,13 +201,21 @@ fn apply_text_configuration(
     main_label: *mut Il2CppObject,
     text_set: *mut Il2CppObject,
     daily_set: *mut Il2CppObject,
-    config: &UITextConfig
+    config: &UITextConfig,
+    config_name: &str,
+    draw_count: i32
 ) {
     use crate::il2cpp::hook::UnityEngine_UI::Text as UIText;
     
     // apply text
     if let Some(text) = config.text.as_ref() {
-        UIText::set_text(main_label, text.to_il2cpp_string());
+
+        let mut final_text = text.clone();
+        if text.contains("{0}") {
+             final_text = text.replace("{0}", &draw_count.to_string());
+        }
+
+        UIText::set_text(main_label, final_text.to_il2cpp_string());
         
         // wipe other labels
         wipe_other_labels(main_label, text_set);
