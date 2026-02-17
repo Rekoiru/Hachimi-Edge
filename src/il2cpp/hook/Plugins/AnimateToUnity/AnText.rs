@@ -17,6 +17,12 @@ pub fn set__lineSpace(this: *mut Il2CppObject, lineSpace: f32)  {
     _UpdateTextWrapper(this);
 }
 
+static mut FONTSIZE_FIELD: *mut FieldInfo = null_mut();
+pub fn set__fontSize(this: *mut Il2CppObject, fontSize: i32) {
+    set_field_value(this, unsafe { FONTSIZE_FIELD }, &fontSize);
+    _UpdateTextWrapper(this);
+}
+
 static mut TEXT_OFFSET_FIELD: *mut FieldInfo = null_mut();
 pub fn set__textOffset(this: *mut Il2CppObject, offset: Vector2_t) {
     set_field_value(this, unsafe { TEXT_OFFSET_FIELD }, &offset);
@@ -154,6 +160,7 @@ pub fn init(image: *const Il2CppImage) {
     unsafe {
         TEXT_OFFSET_FIELD = get_field_from_name(AnText, c"_textOffset");
         LINESPACE_FIELD = get_field_from_name(AnText, c"_lineSpace");
+        FONTSIZE_FIELD = get_field_from_name(AnText, c"_fontSize");
         TEXT_FIELD = get_field_from_name(AnText, c"_text");
         _UPDATE_TEXT_ADDR = _UpdateText_addr;
         _UPDATE_POSITION_ADDR = _UpdatePosition_addr;

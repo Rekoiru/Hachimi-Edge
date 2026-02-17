@@ -56,6 +56,11 @@ extern "C" fn SetTextStatic(an_text: *mut Il2CppObject, text_ptr: *mut Il2CppStr
     let config = Hachimi::instance().localized_data.load().config.story_choice_multi_line.clone();
     
     if let Some(config) = config {
+        // apply font_size if found
+        if let Some(font_size) = config.font_size {
+            AnText::set__fontSize(an_text, font_size);
+        }
+        
         if text_str.contains('\n') {
             apply_multi_line_to_text(an_text, &config);
         } else {
@@ -76,6 +81,15 @@ fn apply_multi_line_fix(this: *mut Il2CppObject, text_ptr: *mut Il2CppString) {
             get__pushText(this),
             get__outlineText(this),
         ];
+
+        // apply font_size if objects are found
+        if let Some(font_size) = config.font_size {
+            for &text_obj in &text_objects {
+                if !text_obj.is_null() {
+                    AnText::set__fontSize(text_obj, font_size);
+                }
+            }
+        }
 
         if text_str.contains('\n') {
             for &text_obj in &text_objects {
