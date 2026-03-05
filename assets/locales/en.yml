@@ -53,6 +53,7 @@ menu:
   open_in_game_browser: "\uf0ac Open in-game browser"
   toggle_game_ui: "\uf06e Toggle game UI"
   discord_rpc: "Discord RPC"
+  allow_skill_fitting: "Skill auto-fitting"
 
 notification:
   saved_localize_dump: "Saved to localize_dump.json"
@@ -117,6 +118,9 @@ config_editor:
     which means that you will NOT be able to access the Config Editor after this.
     If this was not intentional, close this dialog and DISABLE the option.
   debug_mode: "Debug mode"
+  text_debug: "Text debug"
+  text_log: "Log text processed"
+  text_property_dump: "Dump UI properties"
   enable_file_logging: "Enable file logging"
   translator_mode: "Translator mode"
   skip_first_time_setup: "Skip first time setup"

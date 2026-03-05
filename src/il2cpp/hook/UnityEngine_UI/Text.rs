@@ -1,4 +1,9 @@
-use crate::il2cpp::{hook::UnityEngine_TextRenderingModule::TextAnchor, symbols::get_method_addr, types::*};
+use crate::il2cpp::{hook::UnityEngine_TextRenderingModule::TextAnchor, symbols::get_method_addr, types::*, api::il2cpp_class_get_type};
+
+static mut CLASS: *mut Il2CppClass = 0 as _;
+pub fn class() -> *mut Il2CppClass {
+    unsafe { CLASS }
+}
 
 static mut GET_LINESPACING_ADDR: usize = 0;
 impl_addr_wrapper_fn!(get_lineSpacing, GET_LINESPACING_ADDR, f32, this: *mut Il2CppObject);
@@ -20,6 +25,15 @@ impl_addr_wrapper_fn!(set_horizontalOverflow, SET_HORIZONTALOVERFLOW_ADDR, (), t
 
 static mut SET_VERTICALOVERFLOW_ADDR: usize = 0;
 impl_addr_wrapper_fn!(set_verticalOverflow, SET_VERTICALOVERFLOW_ADDR, (), this: *mut Il2CppObject, value: i32);
+
+static mut SET_RESIZETEXTFORBESTFIT_ADDR: usize = 0;
+impl_addr_wrapper_fn!(set_resizeTextForBestFit, SET_RESIZETEXTFORBESTFIT_ADDR, (), this: *mut Il2CppObject, value: bool);
+
+static mut SET_RESIZETEXTMINSIZE_ADDR: usize = 0;
+impl_addr_wrapper_fn!(set_resizeTextMinSize, SET_RESIZETEXTMINSIZE_ADDR, (), this: *mut Il2CppObject, value: i32);
+
+static mut SET_RESIZETEXTMAXSIZE_ADDR: usize = 0;
+impl_addr_wrapper_fn!(set_resizeTextMaxSize, SET_RESIZETEXTMAXSIZE_ADDR, (), this: *mut Il2CppObject, value: i32);
 
 static mut GET_TEXT_ADDR: usize = 0;
 impl_addr_wrapper_fn!(get_text, GET_TEXT_ADDR, *mut Il2CppString, this: *mut Il2CppObject);
@@ -43,6 +57,7 @@ pub fn init(UnityEngine_UI: *const Il2CppImage) {
     get_class_or_return!(UnityEngine_UI, "UnityEngine.UI", Text);
     
     unsafe {
+        CLASS = Text;
         GET_LINESPACING_ADDR = get_method_addr(Text, c"get_lineSpacing", 0);
         SET_LINESPACING_ADDR = get_method_addr(Text, c"set_lineSpacing", 1);
         GET_FONTSIZE_ADDR = get_method_addr(Text, c"get_fontSize", 0);
@@ -50,6 +65,9 @@ pub fn init(UnityEngine_UI: *const Il2CppImage) {
         SET_FONT_ADDR = get_method_addr(Text, c"set_font", 1);
         SET_HORIZONTALOVERFLOW_ADDR = get_method_addr(Text, c"set_horizontalOverflow", 1);
         SET_VERTICALOVERFLOW_ADDR = get_method_addr(Text, c"set_verticalOverflow", 1);
+        SET_RESIZETEXTFORBESTFIT_ADDR = get_method_addr(Text, c"set_resizeTextForBestFit", 1);
+        SET_RESIZETEXTMINSIZE_ADDR = get_method_addr(Text, c"set_resizeTextMinSize", 1);
+        SET_RESIZETEXTMAXSIZE_ADDR = get_method_addr(Text, c"set_resizeTextMaxSize", 1);
         GET_TEXT_ADDR = get_method_addr(Text, c"get_text", 0);
         SET_TEXT_ADDR = get_method_addr(Text, c"set_text", 1);
         SET_ALIGNMENT_ADDR = get_method_addr(Text, c"set_alignment", 1);

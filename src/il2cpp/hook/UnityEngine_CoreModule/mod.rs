@@ -11,6 +11,7 @@ pub mod RenderTexture;
 pub mod Graphics;
 pub mod Behaviour;
 pub mod Component;
+pub mod Transform;
 pub mod RectTransform;
 
 #[cfg(target_os = "windows")]
@@ -41,6 +42,7 @@ pub fn init() {
     Graphics::init(image);
     Behaviour::init(image);
     Component::init(image);
+    Transform::init(image);
     RectTransform::init(image);
 
     #[cfg(target_os = "windows")]

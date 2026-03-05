@@ -221,8 +221,8 @@ pub fn on_LoadAsset(_bundle: *mut Il2CppObject, this: *mut Il2CppObject, name: &
                 else {
                     let size = StoryTimelineTextClipData::get_Size(clip_data);
                     if size == StoryTimelineTextClipData::FontSize_Default {
-                        if let Some(fitted) = utils::wrap_fit_text(text, line_width, line_count, font_size) {
-                            modified_text = Some(fitted);
+                        if let Some(wrapped) = utils::wrap_text(text, line_width) {
+                            modified_text = Some(wrapped.join("\n"));
                         }
                     }
                     // not doing anything with text of other sizes for now...

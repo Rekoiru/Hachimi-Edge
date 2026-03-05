@@ -14,34 +14,20 @@ extern "C" fn UpdateCurrent(this: *mut Il2CppObject) {
     let name = get__nameText(this);
     let desc = get__descText(this);
 
-    let mut skill_cfg = sql::SkillTextFormatting::default();
     if !name.is_null() {
-        skill_cfg.name = Some(sql::TextFormatting{
-            line_len: 13,
-            line_count: 1,
-            font_size: Text::get_fontSize(name),
-        });
+        Text::set_horizontalOverflow(name, 0);
+        Text::set_resizeTextForBestFit(name, true);
     }
     if !desc.is_null() {
-        skill_cfg.desc = Some(sql::TextFormatting{
-            line_len: 18,
-            line_count: 4,
-            font_size: Text::get_fontSize(desc),
-        });
+        Text::set_horizontalOverflow(desc, 0);
+        Text::set_resizeTextForBestFit(desc, true);
+        Text::set_resizeTextMinSize(desc, 14); // sensible default
+        Text::set_resizeTextMaxSize(desc, 30);
     }
 
-    TextDataQuery::with_skill_query(&skill_cfg, || {
+    sql::TextDataQuery::with_skill_learning_query(|| {
         get_orig_fn!(UpdateCurrent, UpdateCurrentFn)(this);
     });
-
-    if skill_cfg.is_localized {
-        if !name.is_null() {
-            Text::set_horizontalOverflow(name, 1);
-        }
-        if !desc.is_null() {
-           Text::set_horizontalOverflow(desc, 1);
-        }
-    }
 }
 
 pub fn init(umamusume: *const Il2CppImage) {

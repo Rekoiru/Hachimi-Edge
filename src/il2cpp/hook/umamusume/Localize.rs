@@ -38,16 +38,26 @@ pub extern "C" fn Get(id: i32) -> *mut Il2CppString {
         },
     };
 
+    let config = hachimi.config.load();
     if let Some(text) = localized_data.localize_dict.get(name) {
+        if config.debug_mode {
+            let orig_str = get_orig_fn!(Get, GetFn)(id);
+            let orig_s = if orig_str.is_null() { String::new() } else { unsafe { (*orig_str).as_utf16str().to_string() } };
+            info!("[Localize] key: {}, original: {}, localized: {}", name, orig_s, text);
+        }
         text.to_il2cpp_string()
     }
     else {
         let str = get_orig_fn!(Get, GetFn)(id);
-        if Hachimi::instance().config.load().translator_mode && id != 1109 && id != 1032 {
+        if config.debug_mode && !str.is_null() {
+            let s = unsafe { (*str).as_utf16str().to_string() };
+            info!("[Localize] key: {}, content: {}", name, s);
+        }
+        if config.translator_mode && id != 1109 && id != 1032 {
             // 1109 and 1032 seems to be debugging strings (they're annoying)
             utils::print_json_entry(name, unsafe { &(*str).as_utf16str().to_string() });
         }
-        if hachimi.config.load().auto_translate_localize && !str.is_null() && unsafe { (*str).length > 0 } {
+        if config.auto_translate_localize && !str.is_null() && unsafe { (*str).length > 0 } {
             let s = unsafe { (*str).as_utf16str().to_string() };
             if let Ok(res) = SugoiClient::instance().translate_one(s) {
                 return res.to_il2cpp_string();

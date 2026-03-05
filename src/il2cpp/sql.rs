@@ -1,4 +1,4 @@
-use std::{ptr, sync::atomic::{self, AtomicPtr}};
+use std::sync::atomic::{self, AtomicBool};
 
 use sqlparser::ast;
 
@@ -26,6 +26,9 @@ pub trait SelectQueryState {
 
     /// Gets the resulting string on the current row's column.
     fn get_text(&self, query: *mut Il2CppObject, idx: i32) -> Option<*mut Il2CppString>;
+
+    /// Gets a tag describing the origin of the data.
+    fn get_origin_tag(&self, _query: *mut Il2CppObject, _idx: i32) -> Option<String> { None }
 }
 
 #[derive(Default)]
@@ -91,7 +94,6 @@ impl Column {
     }
 }
 
-// text_data
 #[derive(Default)]
 pub struct TextDataQuery {
     // SELECT
@@ -104,33 +106,22 @@ pub struct TextDataQuery {
 pub struct TextFormatting {
     pub line_len: i32,
     pub line_count: i32,
-    pub font_size: i32
-}
-
-#[derive(Default)]
-pub struct SkillTextFormatting {
-    pub name: Option<TextFormatting>,
-    pub desc: Option<TextFormatting>,
+    pub font_size: i32,
     pub is_localized: bool
 }
 
-pub static TDQ_SKILL_TEXT_FORMAT:AtomicPtr<SkillTextFormatting> = AtomicPtr::new(ptr::null_mut());
+pub static TDQ_IS_SKILL_LEARNING_QUERY: AtomicBool = AtomicBool::new(false);
+pub static IS_SYSTEM_TEXT_QUERY: AtomicBool = AtomicBool::new(false);
 
 impl TextDataQuery {
-    pub fn with_skill_query(text_cfg: &SkillTextFormatting, callback: impl FnOnce()) {
-        let cfg_ptr = (text_cfg as *const SkillTextFormatting).cast_mut();
-        TDQ_SKILL_TEXT_FORMAT.store(cfg_ptr, atomic::Ordering::Relaxed);
+    pub fn with_skill_learning_query(callback: impl FnOnce()) {
+        TDQ_IS_SKILL_LEARNING_QUERY.store(true, atomic::Ordering::Relaxed);
         callback();
-        TDQ_SKILL_TEXT_FORMAT.store(ptr::null_mut(), atomic::Ordering::Relaxed);
+        TDQ_IS_SKILL_LEARNING_QUERY.store(false, atomic::Ordering::Relaxed);
     }
 
-    // Abuse static lifetime for our funky not-really static pointer because we like living on the Edge :>
-    fn requested_skill_format() -> Result<&'static mut SkillTextFormatting, ()> {
-        let cfg_ptr = TDQ_SKILL_TEXT_FORMAT.load(atomic::Ordering::Relaxed);
-        if cfg_ptr.is_null() {
-            return Err(());
-        }
-        Ok(unsafe{&mut *cfg_ptr})
+    fn is_skill_learning_query() -> bool {
+        TDQ_IS_SKILL_LEARNING_QUERY.load(atomic::Ordering::Relaxed)
     }
 
     fn get_skill_name(index: i32) -> Option<*mut Il2CppString> {
@@ -147,21 +138,11 @@ impl TextDataQuery {
             .unwrap_or_default();
 
         if let Some(text) = text_opt {
-            // Fit text if and as requested.
-            Self::requested_skill_format().ok()
-                .and_then(|cfg| {
-                    cfg.is_localized = true;
-                    cfg.name.as_ref()
-                })
-                .and_then(|name| { match name.line_count {
-                    1 => utils::fit_text(text, name.line_len, name.font_size),
-                    _ => utils::wrap_fit_text(text, name.line_len, name.line_count, name.font_size)
-                    }
-                })
-                .map_or_else(
-                    || Some(text.to_il2cpp_string()),
-                    |fitted| Some(fitted.to_il2cpp_string()),
-                )
+            // append $(bf) if it's a skill learning query to let best fit do its job
+            if Self::is_skill_learning_query() {
+                 return Some(format!("{}$(bf)", text).to_il2cpp_string());
+            }
+            Some(text.to_il2cpp_string())
         }
         else {
             None
@@ -177,17 +158,10 @@ impl TextDataQuery {
             .unwrap_or_default();
 
         if let Some(text) = text_opt {
-            // Fit text if and as requested.
-            Self::requested_skill_format().ok()
-                .and_then(|cfg| {
-                    cfg.is_localized = true;
-                    cfg.desc.as_ref()
-                })
-                .and_then(|desc| utils::wrap_fit_text(text, desc.line_len, desc.line_count, desc.font_size))
-                .map_or_else(
-                    || Some(text.to_il2cpp_string()),
-                    |fitted| Some(fitted.to_il2cpp_string()),
-                )
+            if Self::is_skill_learning_query() {
+                return Some(format!("{}$(bf)", text).to_il2cpp_string());
+            }
+            Some(text.to_il2cpp_string())
         }
         else {
             None
@@ -238,6 +212,16 @@ impl SelectQueryState for TextDataQuery {
         }
 
         None
+    }
+
+    fn get_origin_tag(&self, _query: *mut Il2CppObject, idx: i32) -> Option<String> {
+        if !self.text.is_select_idx(idx) {
+            return None;
+        }
+
+        let category = self.category.int_value?;
+        let index = self.index.int_value?;
+        Some(format!("T:{}:{}", category, index))
     }
 }
 
@@ -293,6 +277,16 @@ impl SelectQueryState for CharacterSystemTextQuery {
 
         None
     }
+
+    fn get_origin_tag(&self, query: *mut Il2CppObject, idx: i32) -> Option<String> {
+        if !self.text.is_select_idx(idx) {
+            return None;
+        }
+
+        let character_id = self.character_id.int_value?;
+        let voice_id = self.voice_id.value_or_try_get_int(query)?;
+        Some(format!("C:{}:{}", character_id, voice_id))
+    }
 }
 
 // race_jikkyo_comment
@@ -330,6 +324,15 @@ impl SelectQueryState for RaceJikkyoCommentQuery {
 
         None
     }
+
+    fn get_origin_tag(&self, query: *mut Il2CppObject, idx: i32) -> Option<String> {
+        if !self.message.is_select_idx(idx) {
+            return None;
+        }
+
+        let id = self.id.try_get_int(query)?;
+        Some(format!("RJC:{}", id))
+    }
 }
 
 // race_jikkyo_message
@@ -366,6 +369,15 @@ impl SelectQueryState for RaceJikkyoMessageQuery {
         }
 
         None
+    }
+
+    fn get_origin_tag(&self, query: *mut Il2CppObject, idx: i32) -> Option<String> {
+        if !self.message.is_select_idx(idx) {
+            return None;
+        }
+
+        let id = self.id.try_get_int(query)?;
+        Some(format!("RJM:{}", id))
     }
 }
 

@@ -1,5 +1,10 @@
 use crate::il2cpp::{api::il2cpp_resolve_icall, symbols::{get_method_addr, Array}, types::*};
 
+static mut CLASS: *mut Il2CppClass = 0 as _;
+pub fn class() -> *mut Il2CppClass {
+    unsafe { CLASS }
+}
+
 static mut DESTROY_ADDR: usize = 0;
 impl_addr_wrapper_fn!(Destroy, DESTROY_ADDR, (), obj: *mut Il2CppObject);
 
@@ -21,6 +26,7 @@ pub fn init(UnityEngine_CoreModule: *const Il2CppImage) {
     get_class_or_return!(UnityEngine_CoreModule, UnityEngine, Object);
 
     unsafe {
+        CLASS = Object;
         DESTROY_ADDR = get_method_addr(Object, c"Destroy", 1);
         SET_HIDEFLAGS_ADDR = get_method_addr(Object, c"set_hideFlags", 1);
         ISNATIVEOBJECTALIVE_ADDR = get_method_addr(Object, c"IsNativeObjectAlive", 1);

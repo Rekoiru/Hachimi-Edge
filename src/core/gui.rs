@@ -1,4 +1,4 @@
-use std::{borrow::Cow, collections::HashMap, ops::RangeInclusive, os::raw::c_void, panic::{self, AssertUnwindSafe}, sync::{atomic::{self, AtomicBool}, Arc, Mutex}, thread, time::Instant};
+use std::{borrow::Cow, collections::HashMap, ops::RangeInclusive, os::raw::c_void, panic::{self, AssertUnwindSafe}, sync::{atomic::{self, AtomicBool}, Arc, Mutex}, thread, time::Instant, cell::RefCell};
 
 use egui_scale::EguiScale;
 use fnv::FnvHashSet;
@@ -1336,6 +1336,21 @@ impl ConfigEditor {
                 ui.checkbox(&mut config.debug_mode, "");
                 ui.end_row();
 
+                ui.label(t!("config_editor.text_debug"));
+                ui.checkbox(&mut config.text_debug, "");
+                ui.end_row();
+
+                if config.text_debug {
+                    ui.label(format!("  \u{21b3} {}", t!("config_editor.text_log")));
+                    ui.checkbox(&mut config.text_log, "");
+                    ui.end_row();
+
+                    ui.label(format!("  \u{21b3} {}", t!("config_editor.text_property_dump")));
+                    ui.checkbox(&mut config.text_property_dump, "");
+                    ui.end_row();
+                }
+
+
                 ui.label(t!("config_editor.enable_file_logging"));
                 ui.checkbox(&mut config.enable_file_logging, "");
                 ui.end_row();
@@ -1556,10 +1571,10 @@ impl Window for ConfigEditor {
 
         let mut open = true;
         let mut open2 = true;
-        let mut config = self.config.clone();
+        let config = RefCell::new(self.config.clone());
         #[cfg(target_os = "windows")]
         {
-            config.windows.menu_open_key = Hachimi::instance().config.load().windows.menu_open_key;
+            config.borrow_mut().windows.menu_open_key = Hachimi::instance().config.load().windows.menu_open_key;
         }
         let mut reset_clicked = false;
 
@@ -1601,7 +1616,7 @@ impl Window for ConfigEditor {
                             .num_columns(2)
                             .spacing([40.0 * scale, 4.0 * scale])
                             .show(ui, |ui| {
-                                Self::run_options_grid(&mut config, ui, self.current_tab);
+                                Self::run_options_grid(&mut config.borrow_mut(), ui, self.current_tab);
                             });
                         });
                         let padding = ime_scroll_padding(ui.ctx());
@@ -1621,7 +1636,7 @@ impl Window for ConfigEditor {
                                 open2 = false;
                             }
                             if ui.button(t!("save")).clicked() {
-                                save_and_reload_config(self.config.clone());
+                                save_and_reload_config(config.borrow().clone());
                                 open2 = false;
                             }
                         });
@@ -1630,7 +1645,7 @@ impl Window for ConfigEditor {
             );
         });
 
-        self.config = config;
+        self.config = config.into_inner();
 
         if reset_clicked {
             self.restore_defaults();
