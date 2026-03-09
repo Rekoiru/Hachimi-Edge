@@ -3,10 +3,14 @@ use widestring::Utf16Str;
 use crate::{
     core::{Hachimi, ext::Utf16StringExt},
     il2cpp::{
-        api::il2cpp_resolve_icall, ext::Il2CppObjectExt, hook::{
-            Plugins::AnimateToUnity::AnRoot, UnityEngine_AssetBundleModule::AssetBundle,
-            umamusume::{CameraData::{self, ShadowResolution}, FlashActionPlayer}
-        }, symbols::{Array, get_method_addr}, types::*
+        api::il2cpp_resolve_icall,
+        ext::Il2CppObjectExt,
+        hook::{
+            umamusume::{CameraData::{self, ShadowResolution}, FlashActionPlayer}, Plugins::AnimateToUnity::AnRoot,
+            UnityEngine_AssetBundleModule::AssetBundle
+        },
+        symbols::{get_method_addr, Array},
+        types::*
     }
 };
 
@@ -14,6 +18,13 @@ static mut CLASS: *mut Il2CppClass = 0 as _;
 pub fn class() -> *mut Il2CppClass {
     unsafe { CLASS }
 }
+
+static mut GETCOMPONENT_ADDR: usize = 0;
+impl_addr_wrapper_fn!(
+    GetComponent, GETCOMPONENT_ADDR,
+    *mut Il2CppObject,
+    this: *mut Il2CppObject, type_: *mut Il2CppObject
+);
 
 static mut GETCOMPONENTINCHILDREN_ADDR: usize = 0;
 impl_addr_wrapper_fn!(
@@ -36,6 +47,13 @@ pub fn GetComponentsInChildren(
 ) -> Array<*mut Il2CppObject> {
     GetComponentsInternal(this, type_, true, true, include_inactive, false, 0 as _)
 }
+
+static mut ADDCOMPONENT_ADDR: usize = 0;
+impl_addr_wrapper_fn!(
+    AddComponent, ADDCOMPONENT_ADDR,
+    *mut Il2CppObject,
+    this: *mut Il2CppObject, type_: *mut Il2CppObject
+);
 
 static mut SETACTIVE_ADDR: usize = 0;
 impl_addr_wrapper_fn!(SetActive, SETACTIVE_ADDR, (), this: *mut Il2CppObject, value: bool);
@@ -100,8 +118,7 @@ struct FastPath {
 type TryGetComponentFastPathFn = extern "C" fn(this: *mut Il2CppObject, type_: *mut Il2CppType, oneFurtherThanResultValue: usize);
 extern "C" fn TryGetComponentFastPath(this: *mut Il2CppObject, type_: *mut Il2CppType, oneFurtherThanResultValue: usize) {
     get_orig_fn!(TryGetComponentFastPath, TryGetComponentFastPathFn)(this, type_, oneFurtherThanResultValue);
-    let fastPath = (oneFurtherThanResultValue - std::mem::size_of::<*mut Il2CppObject>())
-        as *mut FastPath;
+    let fastPath = (oneFurtherThanResultValue - std::mem::size_of::<*mut Il2CppObject>()) as *mut FastPath;
     let component = unsafe { (*fastPath).component };
     if !component.is_null() {
         customize(component);
@@ -120,6 +137,8 @@ pub fn init(UnityEngine_CoreModule: *const Il2CppImage) {
 
     unsafe {
         CLASS = GameObject;
+        ADDCOMPONENT_ADDR = get_method_addr(GameObject, c"AddComponent", 1);
+        GETCOMPONENT_ADDR = get_method_addr(GameObject, c"GetComponent", 1);
         GETCOMPONENTINCHILDREN_ADDR = get_method_addr(GameObject, c"GetComponentInChildren", 2);
         GETCOMPONENTSINTERNAL_ADDR = il2cpp_resolve_icall(
             c"UnityEngine.GameObject::GetComponentsInternal(System.Type,System.Boolean,System.Boolean,\

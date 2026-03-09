@@ -1,12 +1,102 @@
-use std::{borrow::Cow, fs::File, io::Write, path::Path, time::SystemTime};
+use std::{borrow::Cow, fs::File, io::Write, sync::Mutex, path::Path, time::SystemTime};
 
 use serde::Serialize;
 use textwrap::{core::Word, wrap_algorithms, WordSeparator::UnicodeBreakProperties};
 use unicode_width::UnicodeWidthChar;
+use fnv::FnvHashMap;
+use once_cell::sync::Lazy;
 
-use crate::{core::Gui, il2cpp::{ext::{Il2CppStringExt, StringExt}, types::Il2CppString}};
+use crate::{core::Gui, il2cpp::{ext::{Il2CppStringExt, StringExt}, hook::umamusume::{Localize, TextId}, types::{Il2CppObject, Il2CppString}, symbols::Thread}};
 
 use super::{Error, Hachimi};
+
+#[repr(transparent)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+pub struct SendPtr(pub *mut Il2CppObject);
+
+unsafe impl Send for SendPtr {}
+unsafe impl Sync for SendPtr {}
+
+static LOCALIZE_ID_CACHE: Lazy<Mutex<FnvHashMap<String, i32>>> = 
+    Lazy::new(|| Mutex::new(FnvHashMap::default()));
+
+pub fn get_localized_string(id_name: &str) -> String {
+    let check_cache = |name: &str| -> Option<String> {
+        let cache = LOCALIZE_ID_CACHE.lock().unwrap();
+        if let Some(&id) = cache.get(name) {
+            let ptr = Localize::Get(id);
+            if !ptr.is_null() {
+                return Some(unsafe { (*ptr).as_utf16str() }.to_string());
+            }
+            return Some(name.to_owned());
+        }
+        None
+    };
+
+    if let Some(result) = check_cache(id_name) {
+        return result;
+    }
+
+    let id_name_owned = id_name.to_owned();
+    static PENDING_NAME: Mutex<Option<String>> = Mutex::new(None);
+    *PENDING_NAME.lock().unwrap() = Some(id_name_owned.clone());
+
+    Thread::main_thread().schedule(|| {
+        if let Some(name) = PENDING_NAME.lock().unwrap().take() {
+            let val = TextId::from_name(&name);
+            LOCALIZE_ID_CACHE.lock().unwrap().insert(name, val);
+        }
+    });
+
+    check_cache(id_name).unwrap_or_else(|| id_name.to_owned())
+}
+
+pub fn char_to_utf16_index(text: &str, char_idx: usize) -> i32 {
+    text.chars()
+        .take(char_idx)
+        .map(|c| c.len_utf16())
+        .sum::<usize>() as i32
+}
+
+pub fn utf16_to_char_index(text: &str, utf16_idx: usize) -> usize {
+    let mut current_utf16_pos = 0;
+    let mut char_pos = 0;
+    
+    for c in text.chars() {
+        if current_utf16_pos >= utf16_idx {
+            break;
+        }
+        current_utf16_pos += c.len_utf16();
+        char_pos += 1;
+    }
+    char_pos
+}
+
+pub fn str_visual_len(text: &str) -> usize {
+    let mut count = 0;
+    let mut is_in_tag = false;
+    let mut chars = text.chars().peekable();
+
+    while let Some(c) = chars.next() {
+        match c {
+            '<' => is_in_tag = true,
+            '>' => is_in_tag = false,
+            '\\' => {
+                if let Some(&'n') = chars.peek() {
+                    chars.next();
+                } else if !is_in_tag {
+                    count += 1;
+                }
+            }
+            _ => {
+                if !is_in_tag {
+                    count += 1;
+                }
+            }
+        }
+    }
+    count
+}
 
 pub fn concat_unix_path(left: &str, right: &str) -> String {
     let mut str = String::with_capacity(left.len() + 1 + right.len());
@@ -434,6 +524,43 @@ pub fn get_file_modified_time<P: AsRef<Path>>(path: P) -> Option<SystemTime> {
     let metadata = std::fs::metadata(path).ok()?;
     if !metadata.is_file() { return None; }
     metadata.modified().ok()
+}
+
+pub fn get_data_path() -> String {
+    #[cfg(target_os = "android")]
+    {
+        format!("/data/data/{}/files", Hachimi::instance().game.package_name)
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        use crate::{
+            core::game::Region,
+            il2cpp::hook::UnityEngine_CoreModule::Application,
+            windows::utils::get_game_dir
+        };
+
+        let game = &Hachimi::instance().game;
+        let jp_steam_data_path = get_game_dir()
+            .join("UmamusumePrettyDerby_Jpn_Data")
+            .join("Persistent");
+        let new_jp_dmm_data_path = get_game_dir()
+            .join("umamusume_Data")
+            .join("Persistent");
+
+        if game.region == Region::Japan && game.is_steam_release && jp_steam_data_path.exists() {
+            jp_steam_data_path.to_string_lossy().to_string()
+        } else if game.region == Region::Japan && !game.is_steam_release && new_jp_dmm_data_path.exists() {
+            new_jp_dmm_data_path.to_string_lossy().to_string()
+        } else {
+            unsafe { (*Application::get_persistentDataPath()).as_utf16str() }.to_string()
+        }
+    }
+}
+
+pub fn get_masterdb_path() -> String {
+    info!("get_masterdb_path base: {}", get_data_path());
+    format!("{}/master/master.mdb", get_data_path())
 }
 
 // Intentionally dumb png loader implementation that only loads RGBA8 images

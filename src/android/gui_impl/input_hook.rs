@@ -1,17 +1,17 @@
-#![allow(non_snake_case)]
-
-use std::sync::atomic::{AtomicBool, AtomicI32, Ordering};
-use std::sync::{Arc, Mutex};
-use std::time::{Instant, Duration};
+use std::sync::atomic::{AtomicBool, AtomicI32, AtomicI64, AtomicUsize, Ordering};
 
 use egui::Vec2;
 use jni::{
-    objects::{JMap, JObject, JValue},
+    objects::JObject,
     sys::{jboolean, jint, JNI_TRUE},
     JNIEnv,
 };
 
-use crate::{core::{Error, Gui, Hachimi}, il2cpp::symbols::Thread};
+use crate::{
+    android::utils::{BACK_BUTTON_PRESSED, IS_IME_VISIBLE, get_activity, get_screen_dimensions},
+    core::{Error, Gui, Hachimi},
+    il2cpp::symbols::Thread
+};
 
 use super::keymap;
 
@@ -30,38 +30,244 @@ const TOOL_TYPE_MOUSE: jint = 3;
 
 const AXIS_VSCROLL: jint = 9;
 const AXIS_HSCROLL: jint = 10;
-const DOUBLE_TAP_WINDOW: Duration = Duration::from_millis(300);
+static SCROLL_AXIS_SCALE: f32 = 10.0;
 
 static VOLUME_UP_PRESSED: AtomicBool = AtomicBool::new(false);
 static VOLUME_DOWN_PRESSED: AtomicBool = AtomicBool::new(false);
-static VOLUME_UP_LAST_TAP: once_cell::sync::Lazy<Arc<Mutex<Option<Instant>>>> = 
-    once_cell::sync::Lazy::new(|| Arc::new(Mutex::new(None)));
-static IME_REQUESTED: AtomicI32 = AtomicI32::new(-1);
 
-static SCROLL_AXIS_SCALE: f32 = 10.0;
+pub struct MultiTapState {
+    pub count: AtomicUsize,
+    pub last_tap_time: AtomicI64,
+}
+
+impl MultiTapState {
+    pub const fn new() -> Self {
+        Self {
+            count: AtomicUsize::new(0),
+            last_tap_time: AtomicI64::new(0),
+        }
+    }
+
+    pub fn register_tap(&self, limit: usize, window_ms: i64) -> bool {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
+
+        let last_time = self.last_tap_time.swap(now, Ordering::Relaxed); // Update time immediately and get old
+        let delta = now - last_time;
+
+        if delta > window_ms || last_time == 0 {
+            self.count.store(1, Ordering::Relaxed);
+            return limit == 1;
+        }
+
+        let current = self.count.fetch_add(1, Ordering::Relaxed) + 1;
+
+        if current >= limit {
+            self.count.store(0, Ordering::Relaxed);
+            self.last_tap_time.store(0, Ordering::Relaxed);
+            return true;
+        }
+
+        false
+    }
+}
+
+const CORNER_TAP_LIMIT: usize = 3;
+const VOLUME_TAP_LIMIT: usize = 2;
+const TAP_WINDOW_MS: i64 = 300;
+const CORNER_ZONE_RATIO: f32 = 0.12; // 12% screen size
+
+static VOLUME_UP_STATE: MultiTapState = MultiTapState::new();
+static CORNER_TAP_STATE: MultiTapState = MultiTapState::new();
+static TOGGLE_GAME_UI_TAP_STATE: MultiTapState = MultiTapState::new();
+static SCREEN_WIDTH: AtomicI32 = AtomicI32::new(0);
+static SCREEN_HEIGHT: AtomicI32 = AtomicI32::new(0);
 
 type NativeInjectEventFn = extern "C" fn(env: JNIEnv, obj: JObject, input_event: JObject, extra_param: jint) -> jboolean;
 extern "C" fn nativeInjectEvent(mut env: JNIEnv, obj: JObject, input_event: JObject, extra_param: jint) -> jboolean {
-    let motion_event_class = env.find_class("android/view/MotionEvent").unwrap();
-    let key_event_class = env.find_class("android/view/KeyEvent").unwrap();
+    let action = env.call_method(&input_event, "getAction", "()I", &[])
+        .unwrap()
+        .i()
+        .unwrap();
+    let action_masked = action & ACTION_MASK;
+    let is_consuming = Gui::is_consuming_input_atomic();
 
+    if !is_consuming && (action_masked == ACTION_MOVE || action_masked == ACTION_HOVER_MOVE) {
+        return get_orig_fn!(nativeInjectEvent, NativeInjectEventFn)(env, obj, input_event, extra_param);
+    }
+
+    let key_event_class = env.find_class("android/view/KeyEvent").unwrap();
+    if env.is_instance_of(&input_event, &key_event_class).unwrap() {
+        let key_code = env.call_method(&input_event, "getKeyCode", "()I", &[])
+            .unwrap()
+            .i()
+            .unwrap();
+        let repeat_count = env.call_method(&input_event, "getRepeatCount", "()I", &[])
+            .unwrap()
+            .i()
+            .unwrap();
+
+        let pressed = action == ACTION_DOWN;
+
+        match key_code {
+            keymap::KEYCODE_VOLUME_UP => {
+                VOLUME_UP_PRESSED.store(pressed, Ordering::Relaxed);
+
+                if pressed && repeat_count == 0 {
+                    if VOLUME_UP_STATE.register_tap(VOLUME_TAP_LIMIT, TAP_WINDOW_MS) {
+                        if Hachimi::instance().config.load().hide_ingame_ui_hotkey {
+                            Thread::main_thread().schedule(Gui::toggle_game_ui);
+                            return JNI_TRUE;
+                        }
+                    }
+                }
+
+                if pressed && VOLUME_DOWN_PRESSED.load(Ordering::Relaxed) {
+                    if let Some(mut gui) = Gui::instance().map(|m| m.lock().unwrap()) {
+                        gui.toggle_menu();
+                    }
+                }
+            }
+
+            keymap::KEYCODE_VOLUME_DOWN => {
+                VOLUME_DOWN_PRESSED.store(pressed, Ordering::Relaxed);
+
+                if pressed && VOLUME_UP_PRESSED.load(Ordering::Relaxed) {
+                    if let Some(mut gui) = Gui::instance().map(|m| m.lock().unwrap()) {
+                        gui.toggle_menu();
+                    }
+                }
+            }
+
+            _ => {
+                if pressed && key_code == Hachimi::instance().config.load().android.menu_open_key {
+                    let Some(mut gui) = Gui::instance().map(|m| m.lock().unwrap()) else {
+                        return get_orig_fn!(nativeInjectEvent, NativeInjectEventFn)(env, obj, input_event, extra_param);
+                    };
+                    gui.toggle_menu();
+                }
+
+                if Hachimi::instance().config.load().hide_ingame_ui_hotkey && pressed
+                    && key_code == Hachimi::instance().config.load().android.hide_ingame_ui_hotkey_bind {
+                    Thread::main_thread().schedule(Gui::toggle_game_ui);
+                }
+
+                if pressed && key_code == keymap::KEYCODE_BACK {
+                    BACK_BUTTON_PRESSED.store(pressed, Ordering::Release);
+                    if IS_IME_VISIBLE.load(Ordering::Acquire) {
+                        return JNI_TRUE; 
+                    }
+                }
+
+                if Gui::is_consuming_input_atomic() {
+                    let Some(mut gui) = Gui::instance().map(|m| m.lock().unwrap()) else {
+                        return get_orig_fn!(nativeInjectEvent, NativeInjectEventFn)(env, obj, input_event, extra_param);
+                    };
+
+                    if let Some(key) = keymap::get_key(key_code) {
+                        gui.input.events.push(egui::Event::Key {
+                            key,
+                            physical_key: None,
+                            pressed,
+                            repeat: false,
+                            modifiers: Default::default()
+                        });
+                    }
+
+                    if pressed {
+                        let c = env.call_method(&input_event, "getUnicodeChar", "()I", &[])
+                            .unwrap()
+                            .i()
+                            .unwrap();
+                        if c != 0 {
+                            if let Some(c) = char::from_u32(c as _) {
+                                gui.input.events.push(egui::Event::Text(c.to_string()));
+                            }
+                        }
+                    }
+                    return JNI_TRUE;
+                }
+            }
+        }
+
+        return get_orig_fn!(nativeInjectEvent, NativeInjectEventFn)(env, obj, input_event, extra_param);
+    }
+
+    let motion_event_class = env.find_class("android/view/MotionEvent").unwrap();
     if env.is_instance_of(&input_event, &motion_event_class).unwrap() {
-        if !Gui::is_consuming_input_atomic() {
+        let pointer_index = (action & ACTION_POINTER_INDEX_MASK) >> ACTION_POINTER_INDEX_SHIFT;
+
+        let real_x = env.call_method(&input_event, "getX", "()F", &[])
+            .unwrap()
+            .f()
+            .unwrap();
+        let real_y = env.call_method(&input_event, "getY", "()F", &[])
+            .unwrap()
+            .f()
+            .unwrap();
+
+        if !is_consuming {
+            if action_masked == ACTION_DOWN {
+                let mut current_w = SCREEN_WIDTH.load(Ordering::Relaxed);
+                let mut current_h = SCREEN_HEIGHT.load(Ordering::Relaxed);
+
+                let mut corner_zone_size = if current_w > 0 && current_h > 0 {
+                    (current_w.min(current_h) as f32) * CORNER_ZONE_RATIO
+                } else {
+                    150.0
+                };
+
+                let out_of_bounds = real_x > current_w as f32 || real_y > current_h as f32;
+                let is_bottom_left_rotation = current_h > current_w && real_x < corner_zone_size && real_y < (current_h as f32 * 0.6);
+                let looks_wrong = is_bottom_left_rotation || (current_w > current_h && real_y < corner_zone_size && real_x < (current_w as f32 * 0.6));
+
+                if current_h == 0 || out_of_bounds || looks_wrong {
+                    let (new_w, new_h) = get_screen_dimensions(unsafe { env.unsafe_clone() });
+                    SCREEN_WIDTH.store(new_w, Ordering::Relaxed);
+                    SCREEN_HEIGHT.store(new_h, Ordering::Relaxed);
+                    current_w = new_w;
+                    current_h = new_h;
+
+                    if current_w > 0 && current_h > 0 {
+                        corner_zone_size = (current_w.min(current_h) as f32) * CORNER_ZONE_RATIO;
+                    }
+                }
+
+                // top left (toggle gui)
+                if !Hachimi::instance().config.load().disable_gui {
+                    if real_x < corner_zone_size && real_y < corner_zone_size {
+                        if CORNER_TAP_STATE.register_tap(CORNER_TAP_LIMIT, TAP_WINDOW_MS) {
+                            let Some(mut gui) = Gui::instance().map(|m| m.lock().unwrap()) else {
+                                return get_orig_fn!(nativeInjectEvent, NativeInjectEventFn)(env, obj, input_event, extra_param);
+                            };
+                            gui.toggle_menu();
+                            return JNI_TRUE;
+                        }
+                    }
+                }
+
+                // top right (toggle in-game ui)
+                if Hachimi::instance().config.load().hide_ingame_ui_hotkey {
+                    if real_x > (current_w as f32 - corner_zone_size) && real_y < corner_zone_size {
+                        if TOGGLE_GAME_UI_TAP_STATE.register_tap(CORNER_TAP_LIMIT, TAP_WINDOW_MS) {
+                            Thread::main_thread().schedule(Gui::toggle_game_ui);
+                            return JNI_TRUE;
+                        }
+                    }
+                }
+            }
+            return get_orig_fn!(nativeInjectEvent, NativeInjectEventFn)(env, obj, input_event, extra_param);
+        }
+
+        if pointer_index != 0 {
             return get_orig_fn!(nativeInjectEvent, NativeInjectEventFn)(env, obj, input_event, extra_param);
         }
 
         let Some(mut gui) = Gui::instance().map(|m| m.lock().unwrap()) else {
             return get_orig_fn!(nativeInjectEvent, NativeInjectEventFn)(env, obj, input_event, extra_param);
         };
-
-        let get_action_res = env.call_method(&input_event, "getAction", "()I", &[]).unwrap();
-        let action = get_action_res.i().unwrap();
-        let action_masked = action & ACTION_MASK;
-        let pointer_index = (action & ACTION_POINTER_INDEX_MASK) >> ACTION_POINTER_INDEX_SHIFT;
-
-        if pointer_index != 0 {
-            return JNI_TRUE;
-        }
 
         if action_masked == ACTION_SCROLL {
             let x = env.call_method(&input_event, "getAxisValue", "(I)F", &[AXIS_HSCROLL.into()])
@@ -88,14 +294,6 @@ extern "C" fn nativeInjectEvent(mut env: JNIEnv, obj: JObject, input_event: JObj
             };
 
             // dumb and simple, no multi touch
-            let real_x = env.call_method(&input_event, "getX", "()F", &[])
-                .unwrap()
-                .f()
-                .unwrap();
-            let real_y = env.call_method(&input_event, "getY", "()F", &[])
-                .unwrap()
-                .f()
-                .unwrap();
             let tool_type = env.call_method(&input_event, "getToolType", "(I)I", &[0.into()])
                 .unwrap()
                 .i()
@@ -135,91 +333,6 @@ extern "C" fn nativeInjectEvent(mut env: JNIEnv, obj: JObject, input_event: JObj
 
         return JNI_TRUE;
     }
-    else if env.is_instance_of(&input_event, &key_event_class).unwrap() {
-        let action = env.call_method(&input_event, "getAction", "()I", &[])
-            .unwrap()
-            .i()
-            .unwrap();
-        let key_code = env.call_method(&input_event, "getKeyCode", "()I", &[])
-            .unwrap()
-            .i()
-            .unwrap();
-        let repeat_count = env.call_method(&input_event, "getRepeatCount", "()I", &[])
-            .unwrap()
-            .i()
-            .unwrap();
-
-        let pressed = action == ACTION_DOWN;
-        let now = Instant::now();
-        let other_atomic = match key_code {
-            keymap::KEYCODE_VOLUME_UP => {
-                VOLUME_UP_PRESSED.store(pressed, Ordering::Relaxed);
-
-                if pressed && repeat_count == 0 {
-                    if Hachimi::instance().config.load().hide_ingame_ui_hotkey && check_volume_up_double_tap(now) {
-                        return JNI_TRUE; 
-                    }
-                }
-                &VOLUME_DOWN_PRESSED
-            }
-            keymap::KEYCODE_VOLUME_DOWN => {
-                VOLUME_DOWN_PRESSED.store(pressed, Ordering::Relaxed);
-
-                if pressed {
-                    reset_volume_up_tap_state();
-                }
-                &VOLUME_UP_PRESSED
-            }
-            _ => {
-                if pressed && key_code == Hachimi::instance().config.load().android.menu_open_key {
-                    let Some(mut gui) = Gui::instance().map(|m| m.lock().unwrap()) else {
-                        return get_orig_fn!(nativeInjectEvent, NativeInjectEventFn)(env, obj, input_event, extra_param);
-                    };
-                    gui.toggle_menu();
-                }
-                if Hachimi::instance().config.load().hide_ingame_ui_hotkey && pressed
-                    && key_code == Hachimi::instance().config.load().android.hide_ingame_ui_hotkey_bind {
-                    Thread::main_thread().schedule(Gui::toggle_game_ui);
-                }
-                if Gui::is_consuming_input_atomic() {
-                    let Some(mut gui) = Gui::instance().map(|m| m.lock().unwrap()) else {
-                        return get_orig_fn!(nativeInjectEvent, NativeInjectEventFn)(env, obj, input_event, extra_param);
-                    };
-
-                    if let Some(key) = keymap::get_key(key_code) {
-                        gui.input.events.push(egui::Event::Key {
-                            key,
-                            physical_key: None,
-                            pressed,
-                            repeat: false,
-                            modifiers: Default::default()
-                        });
-                    }
-
-                    if pressed {
-                        let c = env.call_method(&input_event, "getUnicodeChar", "()I", &[])
-                            .unwrap()
-                            .i()
-                            .unwrap();
-                        if c != 0 {
-                            if let Some(c) = char::from_u32(c as _) {
-                                gui.input.events.push(egui::Event::Text(c.to_string()));
-                            }
-                        }
-                    }
-                    return JNI_TRUE;
-                }
-                return get_orig_fn!(nativeInjectEvent, NativeInjectEventFn)(env, obj, input_event, extra_param);
-            }
-        };
-
-        if pressed && other_atomic.load(Ordering::Relaxed) {
-            let Some(mut gui) = Gui::instance().map(|m| m.lock().unwrap()) else {
-                return get_orig_fn!(nativeInjectEvent, NativeInjectEventFn)(env, obj, input_event, extra_param);
-            };
-            gui.toggle_menu();
-        }
-    }
 
     get_orig_fn!(nativeInjectEvent, NativeInjectEventFn)(env, obj, input_event, extra_param)
 }
@@ -236,41 +349,7 @@ fn get_ppp(mut env: JNIEnv, gui: &Gui) -> f32 {
     gui.context.zoom_factor() * (view_main_axis_size as f32 / gui.prev_main_axis_size as f32)
 }
 
-fn get_activity(mut env: JNIEnv) -> Option<JObject<'_>> {
-    let activity_thread_class = env.find_class("android/app/ActivityThread").ok()?;
-    let activity_thread = env
-        .call_static_method(
-            activity_thread_class,
-            "currentActivityThread",
-            "()Landroid/app/ActivityThread;",
-            &[],
-        )
-        .ok()?
-        .l()
-        .ok()?;
-    let activities = env
-        .get_field(activity_thread, "mActivities", "Landroid/util/ArrayMap;")
-        .ok()?
-        .l()
-        .ok()?;
-    let activities_map = JMap::from_env(&mut env, &activities).ok()?;
-
-    // Get the first activity in the map
-    let (_, activity_record) = activities_map
-        .iter(&mut env)
-        .ok()?
-        .next(&mut env)
-        .ok()??
-        ;
-    let activity = env
-        .get_field(activity_record, "activity", "Landroid/app/Activity;")
-        .ok()?
-        .l()
-        .ok()?;
-    Some(activity)
-}
-
-fn get_view(mut env: JNIEnv) -> Option<JObject<'_>> {
+fn get_view(mut env: JNIEnv<'_>) -> Option<JObject<'_>> {
     let activity = get_activity(unsafe { env.unsafe_clone() })?;
     let jni_window = env
         .call_method(activity, "getWindow", "()Landroid/view/Window;", &[])
@@ -282,166 +361,6 @@ fn get_view(mut env: JNIEnv) -> Option<JObject<'_>> {
         .ok()?
         .l()
         .ok()
-}
-
-fn clear_jni_exception(env: &mut JNIEnv, context: &str) -> bool {
-    if env.exception_check().unwrap_or(false) {
-        let _ = env.exception_describe();
-        let _ = env.exception_clear();
-        warn!("IME: cleared JNI exception at {}", context);
-        return true;
-    }
-    false
-}
-
-pub(crate) fn set_ime_visible(visible: bool) {
-    info!("IME set_visible={}", visible);
-    crate::core::gui::set_ime_visible(visible);
-    let Some(vm) = crate::android::main::java_vm() else {
-        warn!("IME: JavaVM unavailable");
-        return;
-    };
-    let Ok(mut env) = vm.attach_current_thread() else {
-        warn!("IME: attach_current_thread failed");
-        return;
-    };
-    let Some(activity) = get_activity(unsafe { env.unsafe_clone() }) else {
-        warn!("IME: get_activity failed");
-        return;
-    };
-    if clear_jni_exception(&mut env, "get_activity") {
-        return;
-    }
-    let Some(view) = get_view(unsafe { env.unsafe_clone() }) else {
-        warn!("IME: get_view failed");
-        return;
-    };
-    if clear_jni_exception(&mut env, "get_view") {
-        return;
-    }
-    let target_view = match env
-        .call_method(&activity, "getCurrentFocus", "()Landroid/view/View;", &[])
-        .and_then(|v| v.l())
-    {
-        Ok(focus) if !focus.is_null() => focus,
-        _ => view,
-    };
-    let _ = clear_jni_exception(&mut env, "getCurrentFocus");
-    let context = activity;
-    let Ok(context_class) = env.find_class("android/content/Context") else {
-        warn!("IME: find Context class failed");
-        return;
-    };
-    let Ok(service_name) = env
-        .get_static_field(context_class, "INPUT_METHOD_SERVICE", "Ljava/lang/String;")
-        .and_then(|v| v.l())
-    else {
-        warn!("IME: get INPUT_METHOD_SERVICE failed");
-        return;
-    };
-    let Ok(imm) = env
-        .call_method(
-            &context,
-            "getSystemService",
-            "(Ljava/lang/String;)Ljava/lang/Object;",
-            &[JValue::Object(&service_name)],
-        )
-        .and_then(|v| v.l())
-    else {
-        warn!("IME: getSystemService failed");
-        return;
-    };
-    if clear_jni_exception(&mut env, "getSystemService") {
-        return;
-    }
-    if visible {
-        let res = env.call_method(
-            &imm,
-            "showSoftInput",
-            "(Landroid/view/View;I)Z",
-            &[JValue::Object(&target_view), JValue::Int(2)],
-        );
-        let shown = res.ok().and_then(|v| v.z().ok()).unwrap_or(false);
-        if !shown {
-            let _ = env.call_method(
-                &imm,
-                "toggleSoftInput",
-                "(II)V",
-                &[JValue::Int(2), JValue::Int(1)],
-            );
-            warn!("IME: showSoftInput returned false, toggled instead");
-        }
-        let _ = clear_jni_exception(&mut env, "showSoftInput");
-    } else {
-        let Ok(window_token) = env
-            .call_method(&target_view, "getWindowToken", "()Landroid/os/IBinder;", &[])
-            .and_then(|v| v.l())
-        else {
-            warn!("IME: getWindowToken failed");
-            return;
-        };
-        let res = env.call_method(
-            &imm,
-            "hideSoftInputFromWindow",
-            "(Landroid/os/IBinder;I)Z",
-            &[JValue::Object(&window_token), JValue::Int(0)],
-        );
-        if res.is_err() {
-            warn!("IME: hideSoftInputFromWindow failed");
-        }
-        let _ = clear_jni_exception(&mut env, "hideSoftInputFromWindow");
-    }
-}
-
-pub(crate) fn request_ime_visible(visible: bool) {
-    let desired = if visible { 1 } else { 0 };
-    IME_REQUESTED.store(desired, Ordering::Relaxed);
-    Thread::main_thread().schedule(apply_ime_request);
-}
-
-fn apply_ime_request() {
-    let desired = IME_REQUESTED.swap(-1, Ordering::Relaxed);
-    if desired == 1 {
-        set_ime_visible(true);
-    } else if desired == 0 {
-        set_ime_visible(false);
-    }
-}
-
-fn reset_volume_up_tap_state() {
-    let tap_state = &VOLUME_UP_LAST_TAP;
-    if let Ok(mut guard) = tap_state.lock() {
-        *guard = None;
-    }
-}
-
-fn check_volume_up_double_tap(now: Instant) -> bool {
-    let tap_state = &VOLUME_UP_LAST_TAP;
-    let mut is_double_tap = false;
-
-    let mut last_tap_time_guard = match tap_state.lock() {
-        Ok(guard) => guard,
-        Err(poisoned) => {
-            eprintln!("Mutex poisoned: {:?}", poisoned);
-            poisoned.into_inner()
-        }
-    };
-
-    if let Some(last_time) = *last_tap_time_guard {
-        let time_since_last_tap = now.duration_since(last_time);
-
-        if time_since_last_tap <= DOUBLE_TAP_WINDOW {
-            is_double_tap = true;
-            *last_tap_time_guard = None;
-            Thread::main_thread().schedule(Gui::toggle_game_ui);
-        }else {
-            *last_tap_time_guard = Some(now); 
-        }
-    }else {
-        *last_tap_time_guard = Some(now);
-    }
-
-    is_double_tap
 }
 
 pub static mut NATIVE_INJECT_EVENT_ADDR: usize = 0;

@@ -3,9 +3,19 @@ use arc_swap::ArcSwap;
 use fnv::{FnvHashMap, FnvHashSet};
 use once_cell::sync::OnceCell;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use crate::{core::plugin_api::Plugin, gui_impl, hachimi_impl, il2cpp::{self, hook::umamusume::{CySpringController::SpringUpdateMode, GameSystem}}};
+
+use crate::{core::{plugin_api::Plugin, updater}, gui_impl, hachimi_impl, il2cpp::{self, hook::umamusume::{CySpringController::SpringUpdateMode, GameSystem}, sql::{CharacterData, SkillInfo}}};
 
 use super::{game::{Game, Region}, ipc, plurals, template, template_filters, tl_repo, utils, Error, Interceptor};
+
+pub const REPO_PATH: &str = "kairusds/Hachimi-Edge";
+pub const GITHUB_API: &str = "https://api.github.com/repos";
+pub const CODEBERG_API: &str = "https://codeberg.org/api/v1/repos";
+pub const WEBSITE_URL: &str = "https://hachimi.noccu.art";
+pub const UMAPATCHER_PACKAGE_NAME: &str = "com.leadrdrk.umapatcher.edge";
+pub const UMAPATCHER_INSTALL_URL: &str = "https://github.com/kairusds/UmaPatcher-Edge/releases/latest";
+
+pub static CONFIG_LOAD_ERROR: AtomicBool = AtomicBool::new(false);
 
 pub struct Hachimi {
     // Hooking stuff
@@ -16,6 +26,11 @@ pub struct Hachimi {
     // Localized data
     pub localized_data: ArcSwap<LocalizedData>,
     pub tl_updater: Arc<tl_repo::Updater>,
+
+    // Character data
+    pub chara_data: ArcSwap<CharacterData>,
+    // Untranslated skill info
+    pub skill_info: ArcSwap<SkillInfo>,
 
     // Shared properties
     pub game: Game,
@@ -34,8 +49,7 @@ pub struct Hachimi {
     #[cfg(target_os = "windows")]
     pub discord_rpc: AtomicBool,
 
-    #[cfg(target_os = "windows")]
-    pub updater: Arc<crate::windows::updater::Updater>
+    pub updater: Arc<updater::Updater>
 }
 
 static INSTANCE: OnceCell<Arc<Hachimi>> = OnceCell::new();
@@ -101,6 +115,10 @@ impl Hachimi {
             localized_data: ArcSwap::default(),
             tl_updater: Arc::default(),
 
+            // Same with these
+            chara_data: ArcSwap::default(),
+            skill_info: ArcSwap::default(),
+
             game,
             template_parser: template::Parser::new(&template_filters::LIST),
 
@@ -115,20 +133,26 @@ impl Hachimi {
             #[cfg(target_os = "windows")]
             discord_rpc: AtomicBool::new(config.windows.discord_rpc),
 
-            #[cfg(target_os = "windows")]
             updater: Arc::default(),
 
             config: ArcSwap::new(Arc::new(config))
         })
     }
 
-    fn load_config(data_dir: &Path, region: &Region) -> Result<Config, Error> {
+    // region param is unused?
+    fn load_config(data_dir: &Path, _region: &Region) -> Result<Config, Error> {
         let config_path = data_dir.join("config.json");
         if fs::metadata(&config_path).is_ok() {
             let json = fs::read_to_string(&config_path)?;
-            Ok(serde_json::from_str(&json)?)
-        }
-        else {
+            match serde_json::from_str::<Config>(&json) {
+                Ok(config) => Ok(config),
+                Err(e) => {
+                    eprintln!("Failed to parse config: {}", e);
+                    CONFIG_LOAD_ERROR.store(true, std::sync::atomic::Ordering::Release);
+                    Ok(Config::default())
+                }
+            }
+        }else {
             Ok(Config::default())
         }
     }
@@ -175,6 +199,22 @@ impl Hachimi {
             }
         };
         self.localized_data.store(Arc::new(new_data));
+    }
+
+    pub fn init_character_data(&self) {
+        if self.chara_data.load().chara_ids.is_empty() {
+            let data = CharacterData::load_from_db();
+            self.chara_data.store(Arc::new(data));
+            info!("Character database loaded successfully.");
+        }
+    }
+
+    pub fn init_skill_info(&self) {
+        if self.skill_info.load().skill_names.is_empty() {
+            let data = SkillInfo::load_from_db();
+            self.skill_info.store(Arc::new(data));
+            info!("Skill info loaded successfully.");
+        }
     }
 
     pub fn on_dlopen(&self, filename: &str, handle: usize) -> bool {
@@ -231,14 +271,8 @@ impl Hachimi {
 
     pub fn run_auto_update_check(&self) {
         if !self.config.load().disable_auto_update_check {
-            #[cfg(not(target_os = "windows"))]
-            if !self.config.load().translator_mode {
-                self.tl_updater.clone().check_for_updates(false);
-            }
-
             // Check for hachimi updates first, then translations
             // Don't auto check for tl updates if it's not up to date
-            #[cfg(target_os = "windows")]
             self.updater.clone().check_for_updates(|new_update| {
                 let hachimi = Hachimi::instance();
                 if !new_update && !hachimi.config.load().translator_mode {
@@ -262,6 +296,8 @@ pub struct Config {
     #[serde(default)]
     pub enable_file_logging: bool,
     #[serde(default)]
+    pub apply_atlas_workaround: bool,
+    #[serde(default)]
     pub translator_mode: bool,
     #[serde(default)]
     pub disable_gui: bool,
@@ -282,6 +318,8 @@ pub struct Config {
     pub translation_repo_index: Option<String>,
     #[serde(default)]
     pub skip_first_time_setup: bool,
+    #[serde(default)]
+    pub lazy_translation_updates: bool,
     #[serde(default)]
     pub disable_auto_update_check: bool,
     #[serde(default)]
@@ -312,6 +350,12 @@ pub struct Config {
     pub force_allow_dynamic_camera: bool,
     #[serde(default)]
     pub live_theater_allow_same_chara: bool,
+    #[serde(default = "Config::default_live_vocals_swap")]
+    pub live_vocals_swap: [i32; 6],
+    #[serde(default)]
+    pub skill_info_dialog: bool,
+    #[serde(default)]
+    pub homescreen_bgseason: crate::il2cpp::hook::umamusume::TimeUtil::BgSeason,
     pub sugoi_url: Option<String>,
     #[serde(default)]
     pub auto_translate_stories: bool,
@@ -325,11 +369,27 @@ pub struct Config {
     pub language: Language,
     #[serde(default = "Config::default_meta_index_url")]
     pub meta_index_url: String,
+    #[serde(default)]
+    pub ipv4_only: bool,
     pub physics_update_mode: Option<SpringUpdateMode>,
     #[serde(default = "Config::default_ui_animation_scale")]
     pub ui_animation_scale: f32,
     #[serde(default)]
     pub disabled_hooks: FnvHashSet<String>,
+
+    // theme settings
+    #[serde(default = "Config::default_ui_accent")]
+    pub ui_accent_color: egui::Color32,
+    #[serde(default = "Config::default_window_fill")]
+    pub ui_window_fill: egui::Color32,
+    #[serde(default = "Config::default_panel_fill")]
+    pub ui_panel_fill: egui::Color32,
+    #[serde(default = "Config::default_extreme_bg")]
+    pub ui_extreme_bg_color: egui::Color32,
+    #[serde(default = "Config::default_text_color")]
+    pub ui_text_color: egui::Color32,
+    #[serde(default = "Config::default_window_rounding")]
+    pub ui_window_rounding: f32,
 
     #[cfg(target_os = "windows")]
     #[serde(flatten)]
@@ -350,6 +410,13 @@ impl Config {
     fn default_story_tcps_multiplier() -> f32 { 3.0 }
     fn default_meta_index_url() -> String { "https://gitlab.com/umatl/hachimi-meta/-/raw/main/meta.json".to_owned() }
     fn default_ui_animation_scale() -> f32 { 1.0 }
+    fn default_live_vocals_swap() -> [i32; 6] { [0; 6] }
+    pub fn default_ui_accent() -> egui::Color32 { egui::Color32::from_rgb(100, 150, 240) }
+    pub fn default_window_fill() -> egui::Color32 { egui::Color32::from_rgba_premultiplied(27, 27, 27, 220) }
+    pub fn default_panel_fill() -> egui::Color32 { egui::Color32::from_rgba_premultiplied(27, 27, 27, 220) }
+    pub fn default_extreme_bg() -> egui::Color32 { egui::Color32::from_rgb(15, 15, 15) }
+    pub fn default_text_color() -> egui::Color32 { egui::Color32::from_gray(170) }
+    pub fn default_window_rounding() -> f32 { 10.0 }
 }
 
 impl Default for Config {

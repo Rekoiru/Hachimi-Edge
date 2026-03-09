@@ -3079,6 +3079,23 @@ pub struct RenderTextureDescriptor {
     pub useDynamicScale: bool
 }
 
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct RangeInt {
+    pub start: i32,
+    pub length: i32,
+}
+
+impl RangeInt {
+    pub fn new(start: i32, length: i32) -> Self {
+        Self { start, length }
+    }
+
+    pub fn end(&self) -> i32 {
+        self.start + self.length
+    }
+}
+
 /************** ACTk (READ-ONLY) **************/
 #[repr(C)]
 #[derive(Default, Debug)]

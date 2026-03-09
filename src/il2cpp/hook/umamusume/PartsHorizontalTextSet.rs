@@ -42,7 +42,7 @@ fn find_parts_horizontal_text_set_class(umamusume: *const Il2CppImage) -> *mut I
     }
     
     // try other assemblies
-    for &assembly_name in ASSEMBLY_NAMES {
+    for &_assembly_name in ASSEMBLY_NAMES {
         if let Ok(image) = get_assembly_image(cstr!(assembly_name)) {
             if !image.is_null() {
                 if let Ok(class) = get_class(image, cstr!("Gallop"), cstr!("PartsHorizontalTextSet")) {

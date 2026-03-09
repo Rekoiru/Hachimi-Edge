@@ -22,6 +22,7 @@ fn log_exception(env: &mut JNIEnv, context: &str) {
 
 #[derive(Clone)]
 struct DexEntry {
+    #[allow(dead_code)]
     class_loader: GlobalRef,
     class_obj: GlobalRef,
 }

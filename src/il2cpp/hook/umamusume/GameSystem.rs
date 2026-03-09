@@ -1,4 +1,7 @@
 use crate::{core::{Hachimi, game::Region}, il2cpp::{symbols::{IEnumerator, MoveNextFn, SingletonLike, get_method_addr}, types::*}};
+// use std::sync::atomic::{AtomicBool, Ordering};
+
+// pub static GAME_INITIALIZED: AtomicBool = AtomicBool::new(false);
 
 static mut CLASS: *mut Il2CppClass = 0 as _;
 pub fn class() -> *mut Il2CppClass {
@@ -15,7 +18,11 @@ pub fn instance() -> *mut Il2CppObject {
 static mut SOFTWARERESET_ADDR: usize = 0;
 impl_addr_wrapper_fn!(SoftwareReset, SOFTWARERESET_ADDR, (), this: *mut Il2CppObject);
 
+// good hook for initializing values i guess
 pub fn on_game_initialized() {
+    Hachimi::instance().init_character_data();
+    // GAME_INITIALIZED.store(true, Ordering::Relaxed);
+    Hachimi::instance().init_skill_info();
     #[cfg(target_os = "windows")]
     super::UIManager::apply_ui_scale();
 }

@@ -1,7 +1,6 @@
-use std::os::raw::c_long;
+use std::{cell::OnceCell, os::raw::c_long};
 
 use jni::{objects::JString, JNIEnv};
-use once_cell::unsync::OnceCell;
 
 use crate::{android::{game_impl, hook, plugin_loader, zygisk::{internal::{api_table, module_abi}, AppSpecializeArgs, ServerSpecializeArgs}}, core::{game::Region, Hachimi}};
 
@@ -33,10 +32,7 @@ unsafe extern "C" fn pre_app_specialize(this: *mut Module, args: *mut AppSpecial
     let package_name = java_str.to_string_lossy();
     _ = PACKAGE_NAME.set(package_name.to_string());
 
-    (*this).is_game = match game_impl::get_region(&package_name) {
-        Region::Japan => true,
-        _ => false
-    };
+    (*this).is_game = game_impl::get_region(&package_name) != Region::Unknown;
 }
 
 unsafe extern "C" fn post_app_specialize(this: *mut Module, _args: *const AppSpecializeArgs) {

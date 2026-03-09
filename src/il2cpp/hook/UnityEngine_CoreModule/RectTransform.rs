@@ -18,6 +18,7 @@ impl_addr_wrapper_fn!(set_sizeDelta, SET_SIZEDELTA_ADDR, (), this: *mut Il2CppOb
 
 pub fn init(UnityEngine_CoreModule: *const Il2CppImage) {
     get_class_or_return!(UnityEngine_CoreModule, UnityEngine, RectTransform);
+
     unsafe {
         CLASS = RectTransform;
         TYPE_OBJECT = il2cpp_type_get_object(il2cpp_class_get_type(RectTransform));

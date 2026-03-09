@@ -8,7 +8,7 @@ use size::Size;
 use thread_priority::{ThreadBuilderExt, ThreadPriority};
 
 use crate::core::game::Region;
-use super::{gui::SimpleYesNoDialog, hachimi::{LocalizedData, Language}, http::{self, AsyncRequest}, utils, Error, Gui, Hachimi};
+use super::{gui::SimpleYesNoDialog, hachimi::LocalizedData, http::{self, ureq_config, AsyncRequest}, utils, Error, Gui, Hachimi};
 use once_cell::sync::Lazy;
 
 #[derive(Deserialize)]
@@ -39,7 +39,14 @@ impl RepoInfo {
 
 pub fn new_meta_index_request() -> AsyncRequest<Vec<RepoInfo>> {
     let meta_index_url = &Hachimi::instance().config.load().meta_index_url;
-    AsyncRequest::with_json_response(ureq::get(meta_index_url))
+
+    let req = ureq::http::Request::builder()
+        .uri(meta_index_url)
+        .method("GET")
+        .body(ureq::Body::builder().reader(std::io::empty()))
+        .expect("Failed to build meta index request");
+
+    AsyncRequest::with_json_response(req)
 }
 
 #[derive(Deserialize)]
@@ -69,7 +76,7 @@ impl RepoFile {
     fn verify_integrity(&self, full_path: &Path) -> bool {
         let Ok(mut file) = fs::File::open(full_path) else { return false };
         let mut hasher = blake3::Hasher::new();
-        let mut buffer = [0u8; 8192];
+        let mut buffer = vec![0u8; 8192];
         
         while let Ok(n) = file.read(&mut buffer) {
             if n == 0 { break; }
@@ -89,8 +96,10 @@ struct UpdateInfo {
     is_new_repo: bool,
     cached_files: FnvHashMap<String, String>, // from repo cache
     size: usize,
-    // New fields for better user communication
+    // New fields for better user communication, idk why it complains about these never being read
+    #[allow(dead_code)]
     update_size: usize,      // Size of changed files only
+    #[allow(dead_code)]
     total_size: usize,       // Total size of all files (for ZIP downloads)
     will_use_zip: bool,      // Whether ZIP download will be used
 }
@@ -142,7 +151,7 @@ const MIN_CHUNK_SIZE: u64 = 1024 * 1024 * 5;
 struct DownloadJob {
     agent: ureq::Agent,
     hasher: blake3::Hasher,
-    buffer: [u8; CHUNK_SIZE]
+    buffer: Vec<u8>
 }
 
 impl DownloadJob {
@@ -150,7 +159,7 @@ impl DownloadJob {
         DownloadJob {
             agent: agent1,
             hasher: blake3::Hasher::new(),
-            buffer: [0u8; CHUNK_SIZE]
+            buffer: vec![0u8; CHUNK_SIZE]
         }
     }
 }
@@ -159,7 +168,10 @@ impl Updater {
     pub fn check_for_updates(self: Arc<Self>, pedantic: bool) {
         std::thread::spawn(move || {
             if let Err(e) = self.check_for_updates_internal(pedantic) {
-                error!("{}", e);
+                if let Some(mutex) = Gui::instance() {
+                    mutex.lock().unwrap().show_notification(&format!("{}", e));
+                }
+                info!("{}", e);
             }
         });
     }
@@ -239,64 +251,53 @@ impl Updater {
         let mut update_size: usize = 0;
         let mut total_size: usize = 0;
         for file in index.files.iter() {
-            total_size += file.size;
-
             if file.path.contains("..") || Path::new(&file.path).has_root() {
                 warn!("File path '{}' sanitized", file.path);
                 continue;
             }
 
+            let path = ld_dir_path.as_ref().map(|p| p.join(&file.path));
+            let exists = path.as_ref().map(|p| p.is_file()).unwrap_or(false);
+
             let updated = if is_new_repo {
                 // redownload every single file because the directory will be deleted
                 true
-            } else if !pedantic {
-                // old behavior for check for updates button
-                if let Some(hash) = repo_cache.files.get(&file.path) {
-                    hash != &file.hash
-                } else {
-                    true
-                }
-            } else {
-                // current behavior only for pedantic
-                let path = ld_dir_path.as_ref().map(|p| p.join(&file.path));
-                let exists = path.as_ref().map(|p| p.is_file()).unwrap_or(false);
-
-                if exists && excludes.contains(&file.path) {
-                    // skip excluded files if they exist on disk
+            } else if !pedantic && exists && excludes.contains(&file.path) {
+                // skip excluded file unless pedantic update or the file doesn't exist in the system
+                false
+            } else if let Some(hash) = repo_cache.files.get(&file.path) {
+                // lazy auto update, cached hash and repo hash matches. ignored during pedantic
+                if !pedantic && config.lazy_translation_updates && hash == &file.hash {
                     false
-                } else if let Some(hash) = repo_cache.files.get(&file.path) {
-                    // get path or force download if path is invalid
-                    if let Some(path) = path {
-                        // file doesn't exist -> download
-                        if !exists {
-                            true
-                        } else {
-                            // fast size check to catch interrupted downloads
-                            let metadata = fs::metadata(&path).ok();
-                            let size_mismatch = metadata.map(|m| m.len() as usize != file.size).unwrap_or(true);
-            
-                            if size_mismatch {
-                                true // size mismatch -> redownload
-                            } else if hash != &file.hash {
-                                true // index hash changed -> update
-                            } else {
-                                // full blake3 integrity check if user requested pedantic update
-                                !file.verify_integrity(&path)
-                            }
-                        }
+                } else if let Some(path) = path { // get path or force download if path is invalid
+                    // file doesn't exist -> download
+                    if !exists {
+                        true
                     } else {
-                        true // path invalid -> download
+                        if hash != &file.hash {
+                            true // index hash changed -> update
+                        } else if fs::metadata(&path).map(|m| m.len() as usize != file.size).unwrap_or(true) {
+                            true // size mismatch -> redownload
+                        } else if pedantic {
+                            // full blake3 integrity check if user requested pedantic update
+                            !file.verify_integrity(&path)
+                        } else {
+                            false // everything matches -> skip
+                        }
                     }
                 } else {
-                    // file doesn't exist in cache at all -> download it
-                    true
+                    true // path invalid -> download
                 }
+            } else {
+                // file doesn't exist in cache at all -> download it
+                true
             };
 
             if updated {
                 update_files.push(file.clone());
                 update_size += file.size;
             }
+            total_size += file.size;
         }
 
         if !update_files.is_empty() {
@@ -371,15 +372,19 @@ impl Updater {
     }
 
     pub fn run(self: Arc<Self>) {
-        std::thread::spawn(move || {
-            if let Err(e) = self.clone().run_internal() {
-                error!("{}", e);
-                self.progress.store(Arc::new(None));
-                if let Some(mutex) = Gui::instance() {
-                    mutex.lock().unwrap().show_notification(&t!("notification.update_failed", reason = e.to_string()));
+        std::thread::Builder::new()
+            .name("tl_repo_updater".into())
+            .stack_size(8 * 1024 * 1024) // increase stack size to 8MB to prevent 0xc0000409 (Stack Buffer Overrun) during single-threaded downloads
+            .spawn(move || {
+                if let Err(e) = self.clone().run_internal() {
+                    error!("{}", e);
+                    self.progress.store(Arc::new(None));
+                    if let Some(mutex) = Gui::instance() {
+                        mutex.lock().unwrap().show_notification(&t!("notification.update_failed", reason = e.to_string()));
+                    }
                 }
-            }
-        });
+            })
+            .expect("Failed to spawn updater thread");
     }
 
     fn run_internal(self: Arc<Self>) -> Result<(), Error> {
@@ -462,7 +467,7 @@ impl Updater {
         let fatal_error = Arc::new(Mutex::new(None::<Error>));
         let stop_signal = Arc::new(AtomicBool::new(false));
 
-        let shared_agent = ureq::Agent::new();
+        let shared_agent: ureq::Agent = ureq::Agent::new_with_config(ureq_config());
 
         let (sender, receiver) = mpsc::channel::<RepoFile>();
         let receiver = Arc::new(Mutex::new(receiver));
@@ -483,6 +488,7 @@ impl Updater {
 
             let handle = thread::Builder::new()
                 .name("incremental_downloader".into())
+                .stack_size(8 * 1024 * 1024)
                 .spawn_with_priority(ThreadPriority::Min, move |result| {
                     if result.is_err() {
                         warn!("Failed to set background thread priority for incremental downloader.");
@@ -560,12 +566,19 @@ impl Updater {
         cached_files: Arc<Mutex<FnvHashMap<String, String>>>
     ) -> Result<usize, Error> {
         let zip_path = localized_data_dir.join(".tmp.zip");
+        // idk compiler going monkey mode unless i add this
+        #[allow(unused_assignments)]
         let mut error_count = 0;
 
         {
             let total_size_header = ureq::agent().head(&update_info.zip_url).call()
                 .ok()
-                .and_then(|res| res.header("Content-Length").and_then(|s| s.parse::<usize>().ok()));
+                .and_then(|res| {
+                    res.headers()
+                       .get("Content-Length")
+                       .and_then(|v| v.to_str().ok())
+                       .and_then(|s| s.parse::<usize>().ok())
+                });
 
             let progress_total = match total_size_header {
                 Some(size) if size > 0 => {
@@ -630,6 +643,7 @@ impl Updater {
 
                 let handle = thread::Builder::new()
                     .name("zip_extractor".into())
+                    .stack_size(8 * 1024 * 1024)
                     .spawn_with_priority(ThreadPriority::Min, move |result| {
                         if result.is_err() {
                             warn!("Failed to set background thread priority for zip extractor.");

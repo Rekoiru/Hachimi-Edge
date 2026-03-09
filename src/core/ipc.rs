@@ -157,7 +157,7 @@ fn on_http_request(request: &mut Request) -> Result<CommandResponse, Error> {
                     GameSystem::SoftwareReset(GameSystem::instance());
                 });
                 if let Some(mutex) = Gui::instance() {
-                mutex.lock().unwrap().show_notification(&t!("notification.ipc_softreset_exec"));
+                    mutex.lock().unwrap().show_notification(&t!("notification.ipc_softreset_exec"));
                 }
             } else { notify_error("SoftReset needs exec=true"); }
         }

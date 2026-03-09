@@ -1,7 +1,7 @@
 mod main;
 mod zygisk;
 mod hook;
-mod utils;
+pub mod utils;
 mod plugin_loader;
 pub mod dex_bridge;
 pub mod game_impl;
