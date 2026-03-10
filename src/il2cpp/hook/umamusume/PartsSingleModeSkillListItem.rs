@@ -32,10 +32,25 @@ impl_addr_wrapper_fn!(get_IsDrawNeedSkillPoint, get_IsDrawNeedSkillPoint_addr, b
 static mut get_Id_addr: usize = 0;
 impl_addr_wrapper_fn!(get_Id, get_Id_addr, i32, this: *mut Il2CppObject);
 
-type UpdateItemFn = extern "C" fn(this: *mut Il2CppObject, skill_info: *mut Il2CppObject, is_plate_effect_enable: bool);
-extern "C" fn UpdateItem(this: *mut Il2CppObject, skill_info: *mut Il2CppObject, is_plate_effect_enable: bool) {
+fn UpdateItemCommon(this: *mut Il2CppObject, skill_info: *mut Il2CppObject, orig_fn_cb: impl FnOnce()) {
+    let name = get__nameText(this);
+    let desc = get__descText(this);
+
+    // Name should always exist, but let's be sure.
+    if !name.is_null() {
+        Text::set_horizontalOverflow(name, 0);
+        Text::set_resizeTextForBestFit(name, true);
+    }
+
+    if get_IsDrawDesc(skill_info) && !desc.is_null() {
+        Text::set_horizontalOverflow(desc, 0);
+        Text::set_resizeTextForBestFit(desc, true);
+        Text::set_resizeTextMinSize(desc, 14);
+        Text::set_resizeTextMaxSize(desc, 30);
+    }
+
     TextDataQuery::with_skill_learning_query(|| {
-        get_orig_fn!(UpdateItem, UpdateItemFn)(this, skill_info, is_plate_effect_enable);
+        orig_fn_cb();
     });
 
     if let Some(mult) = Hachimi::instance().localized_data.load().config.skill_list_item_desc_font_size_multiplier {
@@ -43,6 +58,20 @@ extern "C" fn UpdateItem(this: *mut Il2CppObject, skill_info: *mut Il2CppObject,
         let font_size = Text::get_fontSize(desc_text);
         Text::set_fontSize(desc_text, (font_size as f32 * mult).round() as i32);
     }
+}
+
+type UpdateItemJpFn = extern "C" fn(this: *mut Il2CppObject, skill_info: *mut Il2CppObject, is_plate_effect_enable: bool, resource_hash: i32);
+extern "C" fn UpdateItemJp(this: *mut Il2CppObject, skill_info: *mut Il2CppObject, is_plate_effect_enable: bool, resource_hash: i32) {
+    UpdateItemCommon(this, skill_info, || {
+        get_orig_fn!(UpdateItemJp, UpdateItemJpFn)(this, skill_info, is_plate_effect_enable, resource_hash);
+    });
+}
+
+type UpdateItemOtherFn = extern "C" fn(this: *mut Il2CppObject, skill_info: *mut Il2CppObject, is_plate_effect_enable: bool);
+extern "C" fn UpdateItemOther(this: *mut Il2CppObject, skill_info: *mut Il2CppObject, is_plate_effect_enable: bool) {
+    UpdateItemCommon(this, skill_info, || {
+        get_orig_fn!(UpdateItemOther, UpdateItemOtherFn)(this, skill_info, is_plate_effect_enable);
+    });
 }
 
 fn get_skill_text(skill_id: i32) -> (String, String) {
@@ -109,8 +138,14 @@ pub fn init(umamusume: *const Il2CppImage) {
     get_class_or_return!(umamusume, Gallop, PartsSingleModeSkillListItem);
     find_nested_class_or_return!(PartsSingleModeSkillListItem, Info);
 
-    let UpdateItem_addr = get_method_addr(PartsSingleModeSkillListItem, c"UpdateItem", 2);
-    new_hook!(UpdateItem_addr, UpdateItem);
+    if Hachimi::instance().game.region == Region::Japan {
+        let UpdateItem_addr = get_method_addr(PartsSingleModeSkillListItem, c"UpdateItem", 3);
+        new_hook!(UpdateItem_addr, UpdateItemJp);
+    }
+    else {
+        let UpdateItem_addr = get_method_addr(PartsSingleModeSkillListItem, c"UpdateItem", 2);
+        new_hook!(UpdateItem_addr, UpdateItemOther);
+    }
 
     let SetupOnClickSkillButton_addr = get_method_addr(PartsSingleModeSkillListItem, c"SetupOnClickSkillButton", 1);
     new_hook!(SetupOnClickSkillButton_addr, SetupOnClickSkillButton);

@@ -97,7 +97,7 @@ jobs:
       - name: Get release version
         id: get_info
         run: |
-          VERSION=$(curl -sL "https://raw.githubusercontent.com/${{ github.repository }}/main/Cargo.toml" | \
+          VERSION=$(curl -sL "https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref_name }}/Cargo.toml" | \
             awk '/^\[package\]/{flag=1} flag && /^version/{print $3; exit}' | \
             tr -d '"')
           echo "RELEASE_VERSION=v$VERSION" >> $GITHUB_ENV
