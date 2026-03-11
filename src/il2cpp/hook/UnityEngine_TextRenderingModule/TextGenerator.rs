@@ -31,11 +31,12 @@ pub struct TextPropertyOverrides {
 }
 
 static DUMPED_PATHS: Lazy<Mutex<FnvHashSet<String>>> = Lazy::new(|| Mutex::default());
-static SYSTEM_TEXT_COMPONENTS: Lazy<Mutex<FnvHashSet<usize>>> = Lazy::new(|| Mutex::default());
+static SYSTEM_TEXT_COMPONENTS: Lazy<Mutex<FnvHashSet<i32>>> = Lazy::new(|| Mutex::default());
 
 pub fn mark_as_system_text_component(this: *mut Il2CppObject) {
     if this.is_null() { return; }
-    SYSTEM_TEXT_COMPONENTS.lock().unwrap().insert(this as usize);
+    let id = Object::get_instanceID(this);
+    SYSTEM_TEXT_COMPONENTS.lock().unwrap().insert(id);
 
     // also tag the GameObject to ensure PopulateWithErrors catches it
     unsafe {
@@ -43,7 +44,8 @@ pub fn mark_as_system_text_component(this: *mut Il2CppObject) {
         if il2cpp_class_is_assignable_from(crate::il2cpp::hook::UnityEngine_UI::Text::class(), klass) {
             let go = Component::get_gameObject(this);
             if !go.is_null() {
-                SYSTEM_TEXT_COMPONENTS.lock().unwrap().insert(go as usize);
+                let go_id = Object::get_instanceID(go);
+                SYSTEM_TEXT_COMPONENTS.lock().unwrap().insert(go_id);
             }
         }
     }
@@ -134,9 +136,19 @@ extern "C" fn PopulateWithErrors(
 
     // force wrapping for skill and system text
     let mut force_wrap = false;
-    if IS_SYSTEM_TEXT_QUERY.load(Ordering::Relaxed) || TDQ_IS_SKILL_LEARNING_QUERY.load(Ordering::Relaxed)
-        || (!context.is_null() && SYSTEM_TEXT_COMPONENTS.lock().unwrap().contains(&(context as usize))) {
+    if IS_SYSTEM_TEXT_QUERY.load(Ordering::Relaxed) || TDQ_IS_SKILL_LEARNING_QUERY.load(Ordering::Relaxed) {
         force_wrap = true;
+    } else {
+        let mut components = SYSTEM_TEXT_COMPONENTS.lock().unwrap();
+        if !context.is_null() {
+            if components.contains(&Object::get_instanceID(context)) {
+                force_wrap = true;
+            }
+        } else if !this.is_null() {
+            if components.contains(&Object::get_instanceID(this)) {
+                force_wrap = true;
+            }
+        }
     }
 
     if force_wrap {

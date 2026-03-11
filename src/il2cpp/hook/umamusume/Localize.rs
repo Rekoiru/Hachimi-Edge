@@ -39,7 +39,7 @@ pub extern "C" fn Get(id: i32) -> *mut Il2CppString {
 
     let config = hachimi.config.load();
     if let Some(text) = localized_data.localize_dict.get(name) {
-        if config.debug_mode {
+        if config.text_debug && config.text_localize_dump {
             let orig_str = get_orig_fn!(Get, GetFn)(id);
             let orig_s = if orig_str.is_null() { String::new() } else { unsafe { (*orig_str).as_utf16str().to_string() } };
             info!("[Localize] key: {}, original: {}, localized: {}", name, orig_s, text);
@@ -48,7 +48,7 @@ pub extern "C" fn Get(id: i32) -> *mut Il2CppString {
     }
     else {
         let str = get_orig_fn!(Get, GetFn)(id);
-        if config.debug_mode && !str.is_null() {
+        if config.text_debug && config.text_localize_dump && !str.is_null() {
             let s = unsafe { (*str).as_utf16str().to_string() };
             info!("[Localize] key: {}, content: {}", name, s);
         }
