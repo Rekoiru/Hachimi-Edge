@@ -309,6 +309,8 @@ pub struct Config {
     pub text_log: bool,
     #[serde(default)]
     pub text_property_dump: bool,
+    #[serde(default)]
+    pub text_localize_dump: bool,
     pub localized_data_dir: Option<String>,
     pub target_fps: Option<i32>,
     #[serde(default = "Config::default_open_browser_url")]
