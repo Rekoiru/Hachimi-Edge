@@ -67,6 +67,9 @@ mod PartsGachaButtonController;
 mod PartsHorizontalTextSet;
 mod GachaExecutableUnit;
 mod StoryChoiceButton;
+pub mod TweenAnimationTimelineComponent;
+pub mod TweenAnimationTimelineData;
+pub mod TweenAnimationTimelineSheetData;
 
 #[cfg(target_os = "windows")]
 pub mod SceneManager;
@@ -145,7 +148,10 @@ pub fn init() {
     PartsHorizontalTextSet::init(image);
     GachaExecutableUnit::init(image);
     StoryChoiceButton::init(image);
-
+    TweenAnimationTimelineComponent::init(image);
+    TweenAnimationTimelineData::init(image);
+    TweenAnimationTimelineSheetData::init(image);
+    
     #[cfg(target_os = "windows")]
     {
         SceneManager::init(image);
