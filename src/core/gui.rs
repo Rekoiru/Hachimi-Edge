@@ -540,11 +540,13 @@ impl Gui {
         let is_landscape = width > height;
         let main_axis_size = if is_landscape { height } else { width.min(height) };
 
-        #[cfg(target_os = "windows")]
-        let orientation_scale = if is_landscape { 0.6 } else { 1.0 };
-
+        let orientation_ratio = if is_landscape { height as f32 / width as f32 } else { 1.0 };
+        
         #[cfg(not(target_os = "windows"))]
         let orientation_scale = 1.0;
+        
+        #[cfg(target_os = "windows")]
+        let orientation_scale = if is_landscape { orientation_ratio * Hachimi::instance().config.load().gui_landscape_ratio } else { 1.0 };
 
         let pixels_per_point = main_axis_size as f32 * PIXELS_PER_POINT_RATIO * orientation_scale;
         self.context.set_pixels_per_point(pixels_per_point);
@@ -1254,19 +1256,31 @@ impl Gui {
             .inner_margin(egui::Margin::same((4.0 * scale) as i8))
             .corner_radius(4.0 * scale)
             .show(ui, |ui| {
+                let bar_width = 160.0 * scale;
+                ui.set_max_width(bar_width);
+                ui.add_space(2.0 * scale);
                 ui.horizontal(|ui| {
-                    ui.label(t!("tl_updater.title"));
-                    ui.add_space(26.0 * scale);
-                    ui.label(format!("{:.2}%", ratio * 100.0));
+                    ui.label(egui::RichText::new(t!("tl_updater.title")).strong());
+                    ui.with_layout(
+                        egui::Layout::right_to_left(egui::Align::Center),
+                        |ui| {
+                            ui.label(
+                                egui::RichText::new(format!("{:.1}%", ratio * 100.0))
+                                    .color(self.config.ui_text_color),
+                            );
+                        },
+                    );
                 });
+                ui.add_space(2.0 * scale);
                 ui.add(
                     egui::ProgressBar::new(ratio)
-                    .desired_height(4.0 * scale)
-                    .desired_width(140.0 * scale)
+                    .desired_height(6.0 * scale)
+                    .desired_width(bar_width)
+                    .fill(self.config.ui_accent_color),
                 );
                 ui.label(
                     egui::RichText::new(t!("tl_updater.warning"))
-                    .font(egui::FontId::proportional(10.0 * scale))
+                    .font(egui::FontId::proportional(10.0 * scale)),
                 );
             });
         });
@@ -1807,6 +1821,10 @@ impl ConfigEditor {
 
                 ui.label(t!("config_editor.gui_scale"));
                 ui.add(egui::Slider::new(&mut config.gui_scale, 0.25..=2.0).step_by(0.05));
+                ui.end_row();
+                
+                ui.label(t!("config_editor.gui_landscape_ratio"));
+                ui.add(egui::Slider::new(&mut config.gui_landscape_ratio, 0.25..=1.0).step_by(0.05));
                 ui.end_row();
 
                 ui.label(t!("theme_editor.title"));
