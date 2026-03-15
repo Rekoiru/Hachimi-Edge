@@ -156,6 +156,9 @@ pub fn init(image: *const Il2CppImage) {
 
     let _UpdatePosition_addr = get_method_addr(AnText, c"_UpdatePosition", 0);
     new_hook!(_UpdatePosition_addr, _UpdatePositionHook);
+    
+    let SetTextOffset_addr = get_method_addr(AnText, c"SetTextOffset", 1);
+    new_hook!(SetTextOffset_addr, SetTextOffsetHook);
 
     unsafe {
         TEXT_OFFSET_FIELD = get_field_from_name(AnText, c"_textOffset");

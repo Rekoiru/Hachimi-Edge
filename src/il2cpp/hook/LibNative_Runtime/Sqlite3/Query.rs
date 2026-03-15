@@ -1,4 +1,4 @@
-use crate::{core::Hachimi, il2cpp::{ext::{Il2CppStringExt, StringExt}, symbols::get_method_addr, types::*}};
+use crate::{core::Hachimi, il2cpp::{ext::{Il2CppStringExt}, symbols::get_method_addr, types::*}};
 use super::Connection::SELECT_QUERIES;
 
 type GetTextFn = extern "C" fn(this: *mut Il2CppObject, idx: i32) -> *mut Il2CppString;

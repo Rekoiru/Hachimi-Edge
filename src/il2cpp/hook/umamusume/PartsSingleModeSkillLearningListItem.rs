@@ -1,4 +1,4 @@
-use crate::il2cpp::{hook::UnityEngine_UI::Text, sql::{self, TextDataQuery}, symbols::{get_field_from_name, get_field_object_value, get_method_addr}, types::*};
+use crate::il2cpp::{hook::UnityEngine_UI::Text, sql::{self}, symbols::{get_field_from_name, get_field_object_value, get_method_addr}, types::*};
 
 static mut NAMETEXT_FIELD: *mut FieldInfo = 0 as _;
 fn get__nameText(this: *mut Il2CppObject) -> *mut Il2CppObject {

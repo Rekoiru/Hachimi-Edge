@@ -25,6 +25,9 @@ impl_addr_wrapper_fn!(get_childCount, GET_CHILDCOUNT_ADDR, i32, this: *mut Il2Cp
 static mut GETCHILD_ADDR: usize = 0;
 impl_addr_wrapper_fn!(GetChild, GETCHILD_ADDR, *mut Il2CppObject, this: *mut Il2CppObject, index: i32);
 
+static mut GET_LOCALSCALE_ADDR: usize = 0;
+impl_addr_wrapper_fn!(get_localScale, GET_LOCALSCALE_ADDR, Vector3_t, this: *mut Il2CppObject);
+
 pub fn init(UnityEngine_CoreModule: *const Il2CppImage) {
     get_class_or_return!(UnityEngine_CoreModule, UnityEngine, Transform);
     unsafe {
@@ -33,5 +36,6 @@ pub fn init(UnityEngine_CoreModule: *const Il2CppImage) {
         GET_PARENT_ADDR = get_method_addr(Transform, c"get_parent", 0);
         GET_CHILDCOUNT_ADDR = get_method_addr(Transform, c"get_childCount", 0);
         GETCHILD_ADDR = get_method_addr(Transform, c"GetChild", 1);
+        GET_LOCALSCALE_ADDR = get_method_addr(Transform, c"get_localScale", 0);
     }
 }

@@ -1,4 +1,4 @@
-use crate::il2cpp::{hook::UnityEngine_TextRenderingModule::TextAnchor, symbols::get_method_addr, types::*, api::il2cpp_class_get_type};
+use crate::il2cpp::{hook::UnityEngine_TextRenderingModule::TextAnchor, symbols::get_method_addr, types::*};
 
 static mut CLASS: *mut Il2CppClass = 0 as _;
 pub fn class() -> *mut Il2CppClass {

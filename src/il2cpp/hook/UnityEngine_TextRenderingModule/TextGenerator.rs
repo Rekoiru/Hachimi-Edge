@@ -1,5 +1,5 @@
 use std::sync::atomic::Ordering;
-use crate::{core::{template, Hachimi}, il2cpp::{api::il2cpp_class_is_assignable_from, ext::{Il2CppObjectExt, Il2CppStringExt, StringExt}, hook::UnityEngine_CoreModule::{Component, GameObject, Object, Transform}, sql::{IS_SYSTEM_TEXT_QUERY, TDQ_IS_SKILL_LEARNING_QUERY}, symbols, types::*}};
+use crate::{core::{template, Hachimi}, il2cpp::{api::il2cpp_class_is_assignable_from, ext::{Il2CppObjectExt, Il2CppStringExt, StringExt}, hook::UnityEngine_CoreModule::{Component, GameObject, Object, Transform}, sql::{IS_SYSTEM_TEXT_QUERY, TDQ_IS_SKILL_LEARNING_QUERY}, types::*}};
 use fnv::FnvHashSet;
 use once_cell::sync::Lazy;
 use std::sync::Mutex;
@@ -139,7 +139,7 @@ extern "C" fn PopulateWithErrors(
     if IS_SYSTEM_TEXT_QUERY.load(Ordering::Relaxed) || TDQ_IS_SKILL_LEARNING_QUERY.load(Ordering::Relaxed) {
         force_wrap = true;
     } else {
-        let mut components = SYSTEM_TEXT_COMPONENTS.lock().unwrap();
+        let components = SYSTEM_TEXT_COMPONENTS.lock().unwrap();
         if !context.is_null() {
             if components.contains(&Object::get_instanceID(context)) {
                 force_wrap = true;
@@ -156,10 +156,7 @@ extern "C" fn PopulateWithErrors(
     }
 
     // apply hierarchy overrides
-    let mut hierarchy_path_cache: Option<String> = None;
-
     let path = get_hierarchy_path_with_fallback(context, this);
-    hierarchy_path_cache = Some(path.clone());
 
     // fallback for bubbles (PartsCharaMessage) - verticalOverflow is 0 (truncate), 1 (overflow)
     if path.contains("PartsCharaMessage") {
@@ -285,8 +282,36 @@ fn dump_properties(obj: *mut Il2CppObject, path: &str, settings: &TextGeneration
         unsafe {
             let klass = (*rect_transform_obj).klass();
             if il2cpp_class_is_assignable_from(crate::il2cpp::hook::UnityEngine_CoreModule::RectTransform::class(), klass) {
-                let size = crate::il2cpp::hook::UnityEngine_CoreModule::RectTransform::get_sizeDelta(rect_transform_obj);
+                use crate::il2cpp::hook::UnityEngine_CoreModule::{RectTransform, Transform};
+
+                let size = RectTransform::get_sizeDelta(rect_transform_obj);
                 info!("[PropertyDump] RectTransform sizeDelta: {:?}", size);
+
+                let mut curr = rect_transform_obj;
+                let mut depth = 0;
+
+                while !curr.is_null() && depth < 6 {
+                    let name_ptr = Object::get_name(curr);
+                    let name = if !name_ptr.is_null() {
+                        (*name_ptr).as_utf16str().to_string()
+                    } else {
+                        "<unnamed>".to_string()
+                    };
+
+                    let size = RectTransform::get_sizeDelta(curr);
+                    let anchor_min = RectTransform::get_anchorMin(curr);
+                    let anchor_max = RectTransform::get_anchorMax(curr);
+                    let pivot = RectTransform::get_pivot(curr);
+                    let scale = Transform::get_localScale(curr);
+
+                    info!(
+                        "[LayoutDebug] depth={} name={} sizeDelta={:?} anchorMin={:?} anchorMax={:?} pivot={:?} scale={:?}",
+                        depth, name, size, anchor_min, anchor_max, pivot, scale
+                    );
+
+                    curr = Transform::get_parent(curr);
+                    depth += 1;
+                }
             } else {
                 info!("[PropertyDump] Transform (not RectTransform) detected.");
             }

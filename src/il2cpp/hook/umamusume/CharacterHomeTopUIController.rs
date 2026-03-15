@@ -37,7 +37,7 @@ extern "C" fn UpdateView(this: *mut Il2CppObject) {
 }
 
 fn is_valid_enhancement_context(this: *mut Il2CppObject) -> bool {
-    use crate::il2cpp::hook::UnityEngine_CoreModule::{Component, GameObject, Object};
+    use crate::il2cpp::hook::UnityEngine_CoreModule::{Component, Object};
     
     let card_button = CharacterHomeTopUI::get_cardRootButton(this);
     if card_button.is_null() {

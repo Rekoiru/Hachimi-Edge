@@ -2,7 +2,7 @@ use std::sync::atomic::{self, AtomicBool};
 use fnv::{FnvHashMap, FnvHashSet};
 use sqlparser::ast;
 use crate::{
-    core::{utils::{get_masterdb_path, fit_text, wrap_fit_text}, Hachimi},
+    core::{utils::{get_masterdb_path}, Hachimi},
     il2cpp::{ext::{StringExt, Il2CppStringExt}, hook::LibNative_Runtime::Sqlite3::{Connection, Query}, types::{Il2CppObject, Il2CppString}}
 };
 

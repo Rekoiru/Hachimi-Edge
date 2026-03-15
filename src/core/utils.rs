@@ -510,10 +510,8 @@ pub fn scale_to_aspect_ratio(sizes: (i32, i32), aspect_ratio: f32, prefer_larger
     let scale_by_height = if prefer_larger { height > width } else { width > height };
     if scale_by_height {
         width = (height as f32 * aspect_ratio).round() as i32;
-        height = height;
     }
     else {
-        width = width;
         height = (width as f32 / aspect_ratio).round() as i32;
     }
 

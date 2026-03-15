@@ -1,7 +1,7 @@
 use crate::{
     core::{hachimi::UITextConfig, Hachimi},
     il2cpp::{
-        ext::{Il2CppObjectExt, Il2CppStringExt, StringExt},
+        ext::{Il2CppObjectExt, StringExt},
         symbols::get_method_addr,
         types::*
     }
@@ -113,7 +113,6 @@ fn find_main_label(
     draw_count_text: *mut Il2CppObject,
     is_daily: bool
 ) -> Option<*mut Il2CppObject> {
-    use crate::il2cpp::hook::UnityEngine_CoreModule::{GameObject, Component};
     
     // prioritize sets based on context
     let target_sets = if is_daily { 
@@ -202,7 +201,7 @@ fn apply_text_configuration(
     text_set: *mut Il2CppObject,
     daily_set: *mut Il2CppObject,
     config: &UITextConfig,
-    config_name: &str,
+    _config_name: &str,
     draw_count: i32
 ) {
     use crate::il2cpp::hook::UnityEngine_UI::Text as UIText;
