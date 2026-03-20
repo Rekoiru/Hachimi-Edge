@@ -789,6 +789,10 @@ pub struct ButtonOverrides {
     pub character_home_top_trained_list_button: Option<UITextConfig>,
     pub character_home_top_new_team_edit_button: Option<UITextConfig>,
     pub character_home_top_transfer_button: Option<UITextConfig>,
+    pub character_home_top_trained_chara_root_short_button: Option<UITextConfig>,
+    pub character_home_top_succession_only_chara_root_button: Option<UITextConfig>,
+    pub character_home_top_succession_only_start_button: Option<UITextConfig>,
+    pub character_home_top_succession_only_list_button: Option<UITextConfig>,
 }
 
 #[derive(Deserialize, Clone)]
@@ -800,7 +804,7 @@ pub struct UITextConfig {
     pub position_offset_x: Option<f32>,
     pub position_offset_y: Option<f32>,
     pub position_offset_x2: Option<f32>,
-    pub position_offset_y2: Option<f32>
+    pub position_offset_y2: Option<f32>,
 }
 
 impl Default for LocalizedDataConfig {

@@ -14,6 +14,11 @@ static mut SUPPORT_LIST_BUTTON_FIELD: *mut FieldInfo = std::ptr::null_mut();
 static mut TRAINED_LIST_BUTTON_FIELD: *mut FieldInfo = std::ptr::null_mut();
 static mut NEW_TEAM_EDIT_BUTTON_FIELD: *mut FieldInfo = std::ptr::null_mut();
 static mut TRANSFER_BUTTON_FIELD: *mut FieldInfo = std::ptr::null_mut();
+static mut TRAINED_CHARA_ROOT_SHORT_BUTTON_FIELD: *mut FieldInfo = std::ptr::null_mut();
+static mut SUCCESSION_ONLY_CHARA_ROOT_BUTTON_FIELD: *mut FieldInfo = std::ptr::null_mut();
+static mut SUCCESSION_ONLY_START_BUTTON_FIELD: *mut FieldInfo = std::ptr::null_mut();
+static mut SUCCESSION_ONLY_LIST_BUTTON_FIELD: *mut FieldInfo = std::ptr::null_mut();
+
 
 // public getter functions
 pub fn get_cardRootButton(this: *mut Il2CppObject) -> *mut Il2CppObject {
@@ -72,6 +77,24 @@ pub fn get_transferButton(this: *mut Il2CppObject) -> *mut Il2CppObject {
     get_field_value(this, unsafe { TRANSFER_BUTTON_FIELD })
 }
 
+pub fn get_trainedCharaRootShortButton(this: *mut Il2CppObject) -> *mut Il2CppObject {
+    get_field_value(this, unsafe { TRAINED_CHARA_ROOT_SHORT_BUTTON_FIELD })
+}
+
+pub fn get_successionOnlyCharaRootButton(this: *mut Il2CppObject) -> *mut Il2CppObject {
+    get_field_value(this, unsafe { SUCCESSION_ONLY_CHARA_ROOT_BUTTON_FIELD })
+}
+
+pub fn get_successionOnlyStartButton(this: *mut Il2CppObject) -> *mut Il2CppObject {
+    get_field_value(this, unsafe { SUCCESSION_ONLY_START_BUTTON_FIELD })
+}
+
+pub fn get_successionOnlyListButton(this: *mut Il2CppObject) -> *mut Il2CppObject {
+    get_field_value(this, unsafe { SUCCESSION_ONLY_LIST_BUTTON_FIELD })
+}
+
+
+
 pub fn init(umamusume: *const Il2CppImage) {
     if let Ok(klass) = crate::il2cpp::symbols::get_class(umamusume, c"Gallop", c"CharacterHomeTopUI") {
         unsafe {
@@ -89,6 +112,11 @@ pub fn init(umamusume: *const Il2CppImage) {
             TRAINED_LIST_BUTTON_FIELD = get_field_from_name(klass, c"_trainedListButton");
             NEW_TEAM_EDIT_BUTTON_FIELD = get_field_from_name(klass, c"_newTeamEditButton");
             TRANSFER_BUTTON_FIELD = get_field_from_name(klass, c"_transferButton");
+            TRAINED_CHARA_ROOT_SHORT_BUTTON_FIELD = get_field_from_name(klass, c"_trainedCharaRootShortButton");
+            SUCCESSION_ONLY_CHARA_ROOT_BUTTON_FIELD = get_field_from_name(klass, c"_successionOnlyCharaRootButton");
+            SUCCESSION_ONLY_START_BUTTON_FIELD = get_field_from_name(klass, c"_successionOnlyStartButton");
+            SUCCESSION_ONLY_LIST_BUTTON_FIELD = get_field_from_name(klass, c"_successionOnlyListButton");
+
         }
     }
 }

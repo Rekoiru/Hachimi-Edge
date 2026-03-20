@@ -81,7 +81,7 @@ fn apply_button_configs(this: *mut Il2CppObject) {
         if let Some(c) = overrides.$cfg.as_ref() {
             let b = CharacterHomeTopUI::$getter(this);
             if !b.is_null() { 
-                apply_button_config(b, c); 
+                apply_button_config(b, c, stringify!($cfg)); 
             }
         }
     }}
@@ -100,34 +100,73 @@ fn apply_button_configs(this: *mut Il2CppObject) {
     apply!(character_home_top_trained_list_button, get_trainedListButton);
     apply!(character_home_top_new_team_edit_button, get_newTeamEditButton);
     apply!(character_home_top_transfer_button, get_transferButton);
+    apply!(character_home_top_trained_chara_root_short_button, get_trainedCharaRootShortButton);
+    apply!(character_home_top_succession_only_chara_root_button, get_successionOnlyCharaRootButton);
+    apply!(character_home_top_succession_only_start_button, get_successionOnlyStartButton);
+    apply!(character_home_top_succession_only_list_button, get_successionOnlyListButton);
 }
 
-fn apply_button_config(button: *mut Il2CppObject, config: &UITextConfig) {
-    let text_components = collect_text_components(button);
+fn apply_button_config(button: *mut Il2CppObject, config: &UITextConfig, config_name: &str) {
+    let text_components = collect_text_components(button, config_name);
     if text_components.is_empty() {
         return;
     }
 
     for (index, &text_component) in text_components.iter().enumerate() {
+        if text_component.is_null() { continue; }
         apply_text_config(text_component, config, index);
         apply_position_offset(text_component, config, index);
     }
 }
 
-fn collect_text_components(button: *mut Il2CppObject) -> Vec<*mut Il2CppObject> {
-    use crate::il2cpp::hook::UnityEngine_CoreModule::{Component, GameObject};
+fn collect_text_components(button: *mut Il2CppObject, config_name: &str) -> Vec<*mut Il2CppObject> {
+    use crate::il2cpp::hook::UnityEngine_CoreModule::{Component, GameObject, Object};
     use super::TextCommon;
 
+    let game_object = Component::get_gameObject(button);
+    if game_object.is_null() {
+        return Vec::new();
+    }
+
+    // we need to find some strings in some problematic buttons
+    if config_name == "character_home_top_succession_only_start_button" {
+        use crate::il2cpp::api::{il2cpp_class_get_type, il2cpp_type_get_object};
+        use crate::il2cpp::hook::UnityEngine_UI::Text as UIText;
+
+        let text_class = UIText::class();
+        if text_class.is_null() {
+            return Vec::new();
+        }
+        let text_type_obj = il2cpp_type_get_object(il2cpp_class_get_type(text_class));
+        if text_type_obj.is_null() {
+            return Vec::new();
+        }
+
+        let mut custom_components = vec![std::ptr::null_mut(); 2];
+        let text_objects = GameObject::GetComponentsInChildren(game_object, text_type_obj, true);
+        if !text_objects.this.is_null() {
+            let text_slice = unsafe { text_objects.as_slice() };
+            for text_obj in text_slice {
+                let t_go = Component::get_gameObject(*text_obj);
+                if t_go.is_null() { continue; }
+                let name_ptr = Object::get_name(t_go);
+                if name_ptr.is_null() { continue; }
+                let name = unsafe { (*name_ptr).as_utf16str().to_string() };
+                if name == "まとめて獲得" {
+                    custom_components[0] = *text_obj; // text
+                } else if name == "継承専用ウマ娘" {
+                    custom_components[1] = *text_obj; // text2
+                }
+            }
+        }
+        return custom_components;
+    }
+
     let mut text_components = Vec::new();
-    
+
     let target_text = ButtonCommon::get_TargetText(button);
     if !target_text.is_null() {
         text_components.push(target_text);
-    }
-    
-    let game_object = Component::get_gameObject(button);
-    if game_object.is_null() {
-        return text_components;
     }
     
     let text_objects = GameObject::GetComponentsInChildren(game_object, TextCommon::type_object(), true);

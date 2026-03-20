@@ -1,7 +1,8 @@
 use std::sync::atomic::Ordering;
-use crate::{core::{template, Hachimi}, il2cpp::{api::il2cpp_class_is_assignable_from, ext::{Il2CppObjectExt, Il2CppStringExt, StringExt}, hook::UnityEngine_CoreModule::{Component, GameObject, Object, Transform}, sql::{IS_SYSTEM_TEXT_QUERY, TDQ_IS_SKILL_LEARNING_QUERY}, types::*}};
+use crate::{core::{template, Hachimi}, il2cpp::{api::il2cpp_class_is_assignable_from, ext::{Il2CppObjectExt, Il2CppStringExt, StringExt}, hook::UnityEngine_CoreModule::{Component, GameObject, Object, RectTransform, Transform}, sql::{IS_SYSTEM_TEXT_QUERY, TDQ_IS_SKILL_LEARNING_QUERY}, types::*}};
 use fnv::FnvHashSet;
 use once_cell::sync::Lazy;
+use std::collections::HashMap;
 use std::sync::Mutex;
 use std::ptr::null_mut;
 use std::ops::Not;
@@ -28,10 +29,23 @@ pub struct TextPropertyOverrides {
     pub text_anchor: Option<i32>,
     pub pivot_x: Option<f32>,
     pub pivot_y: Option<f32>,
+    pub position_offset_x: Option<f32>,
+    pub position_offset_y: Option<f32>,
+    pub position_target_ancestor: Option<u32>,
 }
 
 static DUMPED_PATHS: Lazy<Mutex<FnvHashSet<String>>> = Lazy::new(|| Mutex::default());
 static SYSTEM_TEXT_COMPONENTS: Lazy<Mutex<FnvHashSet<i32>>> = Lazy::new(|| Mutex::default());
+static ORIGINAL_POSITIONS: Lazy<Mutex<HashMap<usize, Vector2_t>>> = Lazy::new(|| Mutex::new(HashMap::new()));
+
+// pending position offsets to apply after layout
+struct PendingOffset {
+    transform: *mut Il2CppObject,
+    offset_x: f32,
+    offset_y: f32,
+}
+unsafe impl Send for PendingOffset {}
+static PENDING_OFFSETS: Lazy<Mutex<Vec<PendingOffset>>> = Lazy::new(|| Mutex::new(Vec::new()));
 
 pub fn mark_as_system_text_component(this: *mut Il2CppObject) {
     if this.is_null() { return; }
@@ -189,6 +203,11 @@ extern "C" fn PopulateWithErrors(
             if let Some(ta) = props.text_anchor { settings.textAnchor = ta; }
             if let Some(px) = props.pivot_x { settings.pivot.x = px; }
             if let Some(py) = props.pivot_y { settings.pivot.y = py; }
+
+            // queue position offset to apply after layout
+            if props.position_offset_x.is_some() || props.position_offset_y.is_some() {
+                queue_position_offset(context, this, props);
+            }
         }
 
         // automatic property dump when text_debug is on
@@ -242,6 +261,58 @@ extern "C" fn PopulateWithErrors(
                 orig_s, settings.fontSize, settings.resizeTextForBestFit, settings.horizontalOverflow, settings.verticalOverflow, settings.richText, settings.scaleFactor, settings.fontStyle, settings.textAnchor, path, settings.generationExtents, settings.pivot);
         }
         orig_fn(this, str_, settings, context)
+    }
+}
+
+fn queue_position_offset(context: *mut Il2CppObject, fallback: *mut Il2CppObject, props: &TextPropertyOverrides) {
+    let start_obj = if !context.is_null() { context } else if !fallback.is_null() { fallback } else { return; };
+
+    let mut transform = get_transform_safe(start_obj);
+    if transform.is_null() { return; }
+
+    // walk up the hierarchy by position_target_ancestor levels
+    let ancestor_levels = props.position_target_ancestor.unwrap_or(0);
+    for _ in 0..ancestor_levels {
+        let parent = Transform::get_parent(transform);
+        if parent.is_null() { break; }
+        transform = parent;
+    }
+
+    // check if is RectTransform
+    unsafe {
+        let klass = (*transform).klass();
+        if !il2cpp_class_is_assignable_from(RectTransform::class(), klass) {
+            return;
+        }
+    }
+
+    let mut pending = PENDING_OFFSETS.lock().unwrap();
+    pending.push(PendingOffset {
+        transform,
+        offset_x: props.position_offset_x.unwrap_or(0.0),
+        offset_y: props.position_offset_y.unwrap_or(0.0),
+    });
+}
+
+pub fn drain_pending_offsets() {
+    let mut pending = PENDING_OFFSETS.lock().unwrap();
+    if pending.is_empty() { return; }
+
+    let offsets: Vec<PendingOffset> = pending.drain(..).collect();
+    drop(pending);
+
+    let mut pos_map = ORIGINAL_POSITIONS.lock().unwrap();
+    for p in offsets {
+        if p.transform.is_null() { continue; }
+
+        let current_pos = RectTransform::get_anchoredPosition(p.transform);
+        let base_pos = pos_map.entry(p.transform as usize).or_insert_with(|| {
+            Vector2_t { x: current_pos.x, y: current_pos.y }
+        });
+        let new_x = base_pos.x + p.offset_x;
+        let new_y = base_pos.y + p.offset_y;
+
+        RectTransform::set_anchoredPosition(p.transform, Vector2_t { x: new_x, y: new_y });
     }
 }
 
