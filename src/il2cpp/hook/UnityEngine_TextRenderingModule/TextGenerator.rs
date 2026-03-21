@@ -36,7 +36,11 @@ pub struct TextPropertyOverrides {
 
 static DUMPED_PATHS: Lazy<Mutex<FnvHashSet<String>>> = Lazy::new(|| Mutex::default());
 static SYSTEM_TEXT_COMPONENTS: Lazy<Mutex<FnvHashSet<i32>>> = Lazy::new(|| Mutex::default());
-static ORIGINAL_POSITIONS: Lazy<Mutex<HashMap<usize, Vector2_t>>> = Lazy::new(|| Mutex::new(HashMap::new()));
+struct StoredPosition {
+    base: Vector2_t,     // original pre-offset position
+    applied: Vector2_t,  // position after offset was applied
+}
+static ORIGINAL_POSITIONS: Lazy<Mutex<HashMap<usize, StoredPosition>>> = Lazy::new(|| Mutex::new(HashMap::new()));
 
 // pending position offsets to apply after layout
 struct PendingOffset {
@@ -286,6 +290,19 @@ fn queue_position_offset(context: *mut Il2CppObject, fallback: *mut Il2CppObject
         }
     }
 
+    let config = Hachimi::instance().config.load();
+    if config.text_debug {
+        let name = unsafe {
+            let name_ptr = Object::get_name(transform);
+            if !name_ptr.is_null() { (*name_ptr).as_utf16str().to_string() } else { "<null>".to_string() }
+        };
+        let alive = Object::IsNativeObjectAlive(transform);
+        info!("[PositionOffset] QUEUE transform={:#x} name={} ancestor={} offset=({}, {}) alive={}",
+            transform as usize, name, ancestor_levels,
+            props.position_offset_x.unwrap_or(0.0), props.position_offset_y.unwrap_or(0.0), alive);
+    }
+
+    // queue the offset for post-layout application
     let mut pending = PENDING_OFFSETS.lock().unwrap();
     pending.push(PendingOffset {
         transform,
@@ -301,17 +318,62 @@ pub fn drain_pending_offsets() {
     let offsets: Vec<PendingOffset> = pending.drain(..).collect();
     drop(pending);
 
+    let config = Hachimi::instance().config.load();
+
     let mut pos_map = ORIGINAL_POSITIONS.lock().unwrap();
+    // vlean up entries for dead transforms to prevent unbounded growth
+    pos_map.retain(|_, stored| {
+        // Keep entries where base != applied (i.e. we actually applied an offset)
+        // Stale entries from destroyed objects will be skipped below anyway
+        (stored.base.x - stored.applied.x).abs() > 0.01 ||
+        (stored.base.y - stored.applied.y).abs() > 0.01
+    });
     for p in offsets {
         if p.transform.is_null() { continue; }
 
-        let current_pos = RectTransform::get_anchoredPosition(p.transform);
-        let base_pos = pos_map.entry(p.transform as usize).or_insert_with(|| {
-            Vector2_t { x: current_pos.x, y: current_pos.y }
-        });
-        let new_x = base_pos.x + p.offset_x;
-        let new_y = base_pos.y + p.offset_y;
+        // skip destroyed transforms
+        if !Object::IsNativeObjectAlive(p.transform) {
+            if config.text_debug {
+                warn!("[PositionOffset] SKIP DEAD transform={:#x} offset=({}, {})",
+                    p.transform as usize, p.offset_x, p.offset_y);
+            }
+            pos_map.remove(&(p.transform as usize));
+            continue;
+        }
 
+        let current_pos = RectTransform::get_anchoredPosition(p.transform);
+        let cur_x = current_pos.x;
+        let cur_y = current_pos.y;
+        let key = p.transform as usize;
+
+        let (base_x, base_y) = if let Some(stored) = pos_map.get(&key) {
+            let dx = (cur_x - stored.applied.x).abs();
+            let dy = (cur_y - stored.applied.y).abs();
+            if dx < 0.5 && dy < 0.5 {
+                (stored.base.x, stored.base.y)
+            } else {
+                (cur_x, cur_y)
+            }
+        } else {
+            (cur_x, cur_y)
+        };
+
+        let new_x = base_x + p.offset_x;
+        let new_y = base_y + p.offset_y;
+
+        if config.text_debug {
+            let name = unsafe {
+                let name_ptr = Object::get_name(p.transform);
+                if !name_ptr.is_null() { (*name_ptr).as_utf16str().to_string() } else { "<null>".to_string() }
+            };
+            info!("[PositionOffset] APPLY transform={:#x} name={} current=({}, {}) base=({}, {}) -> new=({}, {})",
+                p.transform as usize, name, cur_x, cur_y, base_x, base_y, new_x, new_y);
+        }
+
+        pos_map.insert(key, StoredPosition {
+            base: Vector2_t { x: base_x, y: base_y },
+            applied: Vector2_t { x: new_x, y: new_y },
+        });
         RectTransform::set_anchoredPosition(p.transform, Vector2_t { x: new_x, y: new_y });
     }
 }
