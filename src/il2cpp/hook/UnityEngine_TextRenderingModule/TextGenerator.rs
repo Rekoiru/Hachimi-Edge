@@ -32,21 +32,28 @@ pub struct TextPropertyOverrides {
     pub position_offset_x: Option<f32>,
     pub position_offset_y: Option<f32>,
     pub position_target_ancestor: Option<u32>,
+    pub text_override: Option<String>,
+    pub sibling_name: Option<String>,
+    pub sibling_offset_x: Option<f32>,
+    pub sibling_offset_y: Option<f32>,
 }
 
 static DUMPED_PATHS: Lazy<Mutex<FnvHashSet<String>>> = Lazy::new(|| Mutex::default());
 static SYSTEM_TEXT_COMPONENTS: Lazy<Mutex<FnvHashSet<i32>>> = Lazy::new(|| Mutex::default());
+
 struct StoredPosition {
-    base: Vector2_t,     // original pre-offset position
-    applied: Vector2_t,  // position after offset was applied
+    base: Vector2_t,
+    applied: Vector2_t,
 }
 static ORIGINAL_POSITIONS: Lazy<Mutex<HashMap<usize, StoredPosition>>> = Lazy::new(|| Mutex::new(HashMap::new()));
 
-// pending position offsets to apply after layout
 struct PendingOffset {
     transform: *mut Il2CppObject,
     offset_x: f32,
     offset_y: f32,
+    sibling_name: Option<String>,
+    sibling_offset_x: f32,
+    sibling_offset_y: f32,
 }
 unsafe impl Send for PendingOffset {}
 static PENDING_OFFSETS: Lazy<Mutex<Vec<PendingOffset>>> = Lazy::new(|| Mutex::new(Vec::new()));
@@ -55,8 +62,6 @@ pub fn mark_as_system_text_component(this: *mut Il2CppObject) {
     if this.is_null() { return; }
     let id = Object::get_instanceID(this);
     SYSTEM_TEXT_COMPONENTS.lock().unwrap().insert(id);
-
-    // also tag the GameObject to ensure PopulateWithErrors catches it
     unsafe {
         let klass = (*this).klass();
         if il2cpp_class_is_assignable_from(crate::il2cpp::hook::UnityEngine_UI::Text::class(), klass) {
@@ -69,43 +74,33 @@ pub fn mark_as_system_text_component(this: *mut Il2CppObject) {
     }
 }
 
-// Looks up a path in the overrides map, first try an exact match if not, try suffix matching any key starting with /
 fn find_text_property_override<'a>(
     overrides: &'a fnv::FnvHashMap<String, TextPropertyOverrides>,
     path: &str,
 ) -> Option<&'a TextPropertyOverrides> {
-    // exact match
     if let Some(props) = overrides.get(path) {
         return Some(props);
     }
-
-    // suffix match
     for (key, props) in overrides {
         if key.starts_with('/') && path.ends_with(&key[1..]) {
             return Some(props);
         }
     }
-
     None
 }
 
-// same but for fonts
 fn find_font_override(
     overrides: &fnv::FnvHashMap<String, i32>,
     path: &str,
 ) -> Option<i32> {
-    // exact match
     if let Some(&size) = overrides.get(path) {
         return Some(size);
     }
-
-    // suffix match
     for (key, &size) in overrides {
         if key.starts_with('/') && path.ends_with(&key[1..]) {
             return Some(size);
         }
     }
-
     None
 }
 
@@ -127,18 +122,15 @@ extern "C" fn PopulateWithErrors(
     let mut has_template: bool = false;
     let ld_str: String;
 
-    // Check if the hashed dict has a match.
     let hashed_text = hashed_dict.is_empty().not()
         .then(|| hashed_dict.get(&unsafe { (*str_).hash() }))
         .flatten();
     if let Some(text) = hashed_text {
         new_str = Some(text);
         has_template = text.contains('$');
-    }
-    // The string can be localized or original. Skip if we are sure it's not localized.
-    else if !localized_data.localize_dict.is_empty() || !localized_data.text_data_dict.is_empty() {
+    } else if !localized_data.localize_dict.is_empty() || !localized_data.text_data_dict.is_empty() {
         let utf_str = unsafe { (*str_).as_utf16str() };
-        if utf_str.as_slice().contains(&36) { // 36 = dollar sign ($)
+        if utf_str.as_slice().contains(&36) {
             has_template = true;
             ld_str = utf_str.to_string();
             new_str = Some(&ld_str);
@@ -147,36 +139,25 @@ extern "C" fn PopulateWithErrors(
 
     let config = hachimi.config.load();
 
-    // apply global font scale
     if text_settings.font_scale != 1.0 {
         settings.fontSize = (settings.fontSize as f32 * text_settings.font_scale) as i32;
     }
 
-    // force wrapping for skill and system text
     let mut force_wrap = false;
     if IS_SYSTEM_TEXT_QUERY.load(Ordering::Relaxed) || TDQ_IS_SKILL_LEARNING_QUERY.load(Ordering::Relaxed) {
         force_wrap = true;
     } else {
         let components = SYSTEM_TEXT_COMPONENTS.lock().unwrap();
         if !context.is_null() {
-            if components.contains(&Object::get_instanceID(context)) {
-                force_wrap = true;
-            }
+            if components.contains(&Object::get_instanceID(context)) { force_wrap = true; }
         } else if !this.is_null() {
-            if components.contains(&Object::get_instanceID(this)) {
-                force_wrap = true;
-            }
+            if components.contains(&Object::get_instanceID(this)) { force_wrap = true; }
         }
     }
+    if force_wrap { settings.horizontalOverflow = 0; }
 
-    if force_wrap {
-        settings.horizontalOverflow = 0; // Wrap
-    }
-
-    // apply hierarchy overrides
     let path = get_hierarchy_path_with_fallback(context, this);
 
-    // fallback for bubbles (PartsCharaMessage) - verticalOverflow is 0 (truncate), 1 (overflow)
     if path.contains("PartsCharaMessage") {
         settings.horizontalOverflow = 0;
         settings.verticalOverflow = 1;
@@ -208,13 +189,18 @@ extern "C" fn PopulateWithErrors(
             if let Some(px) = props.pivot_x { settings.pivot.x = px; }
             if let Some(py) = props.pivot_y { settings.pivot.y = py; }
 
-            // queue position offset to apply after layout
-            if props.position_offset_x.is_some() || props.position_offset_y.is_some() {
+            if let Some(ref override_text) = props.text_override {
+                new_str = Some(override_text);
+                has_template = override_text.contains('$');
+            }
+
+            if props.position_offset_x.is_some() || props.position_offset_y.is_some()
+                || props.sibling_name.is_some()
+            {
                 queue_position_offset(context, this, props);
             }
         }
 
-        // automatic property dump when text_debug is on
         if config.text_debug && config.text_property_dump {
             let mut dumped = DUMPED_PATHS.lock().unwrap();
             if !dumped.contains(&path) {
@@ -222,8 +208,7 @@ extern "C" fn PopulateWithErrors(
                 dumped.insert(path.clone());
             }
         }
-    }
-    else if config.text_debug && config.text_property_dump {
+    } else if config.text_debug && config.text_property_dump {
         let mut dumped = DUMPED_PATHS.lock().unwrap();
         if !dumped.contains(&path) {
             dump_properties(context, &path, &settings);
@@ -233,35 +218,29 @@ extern "C" fn PopulateWithErrors(
 
     if let Some(text) = new_str {
         let processed_text = if has_template {
-            let mut template_context = TemplateContext {
-                settings: &mut settings
-            };
+            let mut template_context = TemplateContext { settings: &mut settings };
             hachimi.template_parser.eval_with_context(text, &mut template_context)
-        }
-        else {
+        } else {
             text.clone()
         };
 
         if config.text_debug && config.text_log {
             let hash = unsafe { (*str_).hash() };
             let orig_s = unsafe { (*str_).as_utf16str().to_string() };
-
             if hashed_text.is_some() {
-                info!("[Hashed] hash: {:X}, original: {}, processed: {}, size: {}, bf: {}, ho: {}, vo: {}, rt: {}, sf: {}, fs: {}, ta: {}, context: {}, extents: {:?}, pivot: {:?}", 
+                info!("[Hashed] hash: {:X}, original: {}, processed: {}, size: {}, bf: {}, ho: {}, vo: {}, rt: {}, sf: {}, fs: {}, ta: {}, context: {}, extents: {:?}, pivot: {:?}",
                     hash, orig_s, processed_text, settings.fontSize, settings.resizeTextForBestFit, settings.horizontalOverflow, settings.verticalOverflow, settings.richText, settings.scaleFactor, settings.fontStyle, settings.textAnchor, path, settings.generationExtents, settings.pivot);
             } else {
-                info!("[Generic] original: {}, processed: {}, size: {}, bf: {}, ho: {}, vo: {}, rt: {}, sf: {}, fs: {}, ta: {}, context: {}, extents: {:?}, pivot: {:?}", 
+                info!("[Generic] original: {}, processed: {}, size: {}, bf: {}, ho: {}, vo: {}, rt: {}, sf: {}, fs: {}, ta: {}, context: {}, extents: {:?}, pivot: {:?}",
                     orig_s, processed_text, settings.fontSize, settings.resizeTextForBestFit, settings.horizontalOverflow, settings.verticalOverflow, settings.richText, settings.scaleFactor, settings.fontStyle, settings.textAnchor, path, settings.generationExtents, settings.pivot);
-            };
+            }
         }
-
         orig_fn(this, processed_text.to_il2cpp_string(), settings, context)
-    }
-    else {
+    } else {
         if config.text_debug && config.text_log {
             let orig_s = unsafe { (*str_).as_utf16str().to_string() };
             let orig_s = orig_s.replace('\n', "\\n").replace('\r', "\\r");
-            info!("[Generic] {}, size: {}, bf: {}, ho: {}, vo: {}, rt: {}, sf: {}, fs: {}, ta: {}, context: {}, extents: {:?}, pivot: {:?}", 
+            info!("[Generic] {}, size: {}, bf: {}, ho: {}, vo: {}, rt: {}, sf: {}, fs: {}, ta: {}, context: {}, extents: {:?}, pivot: {:?}",
                 orig_s, settings.fontSize, settings.resizeTextForBestFit, settings.horizontalOverflow, settings.verticalOverflow, settings.richText, settings.scaleFactor, settings.fontStyle, settings.textAnchor, path, settings.generationExtents, settings.pivot);
         }
         orig_fn(this, str_, settings, context)
@@ -274,7 +253,6 @@ fn queue_position_offset(context: *mut Il2CppObject, fallback: *mut Il2CppObject
     let mut transform = get_transform_safe(start_obj);
     if transform.is_null() { return; }
 
-    // walk up the hierarchy by position_target_ancestor levels
     let ancestor_levels = props.position_target_ancestor.unwrap_or(0);
     for _ in 0..ancestor_levels {
         let parent = Transform::get_parent(transform);
@@ -282,12 +260,9 @@ fn queue_position_offset(context: *mut Il2CppObject, fallback: *mut Il2CppObject
         transform = parent;
     }
 
-    // check if is RectTransform
     unsafe {
         let klass = (*transform).klass();
-        if !il2cpp_class_is_assignable_from(RectTransform::class(), klass) {
-            return;
-        }
+        if !il2cpp_class_is_assignable_from(RectTransform::class(), klass) { return; }
     }
 
     let config = Hachimi::instance().config.load();
@@ -297,18 +272,112 @@ fn queue_position_offset(context: *mut Il2CppObject, fallback: *mut Il2CppObject
             if !name_ptr.is_null() { (*name_ptr).as_utf16str().to_string() } else { "<null>".to_string() }
         };
         let alive = Object::IsNativeObjectAlive(transform);
-        info!("[PositionOffset] QUEUE transform={:#x} name={} ancestor={} offset=({}, {}) alive={}",
+        info!("[PositionOffset] QUEUE transform={:#x} name={} ancestor={} offset=({}, {}) sibling={:?} alive={}",
             transform as usize, name, ancestor_levels,
-            props.position_offset_x.unwrap_or(0.0), props.position_offset_y.unwrap_or(0.0), alive);
+            props.position_offset_x.unwrap_or(0.0), props.position_offset_y.unwrap_or(0.0),
+            props.sibling_name, alive);
     }
 
-    // queue the offset for post-layout application
     let mut pending = PENDING_OFFSETS.lock().unwrap();
     pending.push(PendingOffset {
         transform,
         offset_x: props.position_offset_x.unwrap_or(0.0),
         offset_y: props.position_offset_y.unwrap_or(0.0),
+        sibling_name: props.sibling_name.clone(),
+        sibling_offset_x: props.sibling_offset_x.unwrap_or(0.0),
+        sibling_offset_y: props.sibling_offset_y.unwrap_or(0.0),
     });
+}
+
+fn apply_sibling_offset(
+    anchor_transform: *mut Il2CppObject,
+    sibling_name: &str,
+    offset_x: f32,
+    offset_y: f32,
+    pos_map: &mut HashMap<usize, StoredPosition>,
+    debug: bool,
+) {
+    // split on comma, trim whitespace, apply to each name
+    for name in sibling_name.split(',').map(|s| s.trim()) {
+        if name.is_empty() { continue; }
+        apply_single_sibling_offset(anchor_transform, name, offset_x, offset_y, pos_map, debug);
+    }
+}
+
+fn apply_single_sibling_offset(
+    anchor_transform: *mut Il2CppObject,
+    sibling_name: &str,
+    offset_x: f32,
+    offset_y: f32,
+    pos_map: &mut HashMap<usize, StoredPosition>,
+    debug: bool,
+) {
+    if anchor_transform.is_null() { return; }
+
+    let parent = Transform::get_parent(anchor_transform);
+    if parent.is_null() { return; }
+
+    let child_count = Transform::get_childCount(parent);
+    let mut target: *mut Il2CppObject = null_mut();
+
+    unsafe {
+        for i in 0..child_count {
+            let child = Transform::GetChild(parent, i);
+            if child.is_null() { continue; }
+            let name_ptr = Object::get_name(child);
+            if name_ptr.is_null() { continue; }
+            let name = (*name_ptr).as_utf16str().to_string();
+            if name == sibling_name {
+                target = child;
+                break;
+            }
+        }
+    }
+
+    if target.is_null() {
+        if debug { warn!("[SiblingOffset] NOT FOUND name={} under parent of {:#x}", sibling_name, anchor_transform as usize); }
+        return;
+    }
+
+    unsafe {
+        let klass = (*target).klass();
+        if !il2cpp_class_is_assignable_from(RectTransform::class(), klass) {
+            if debug { warn!("[SiblingOffset] {} is not a RectTransform", sibling_name); }
+            return;
+        }
+    }
+
+    if !Object::IsNativeObjectAlive(target) {
+        if debug { warn!("[SiblingOffset] DEAD transform for sibling={}", sibling_name); }
+        return;
+    }
+
+    let current_pos = RectTransform::get_anchoredPosition(target);
+    let cur_x = current_pos.x;
+    let cur_y = current_pos.y;
+    let key = target as usize;
+
+    let (base_x, base_y) = if let Some(stored) = pos_map.get(&key) {
+        let dx = (cur_x - stored.applied.x).abs();
+        let dy = (cur_y - stored.applied.y).abs();
+        if dx < 0.5 && dy < 0.5 { (stored.base.x, stored.base.y) } else { (cur_x, cur_y) }
+    } else {
+        (cur_x, cur_y)
+    };
+
+    let new_x = base_x + offset_x;
+    let new_y = base_y + offset_y;
+
+    if debug {
+        info!("[SiblingOffset] APPLY sibling={} transform={:#x} current=({}, {}) base=({}, {}) -> new=({}, {})",
+            sibling_name, target as usize, cur_x, cur_y, base_x, base_y, new_x, new_y);
+    }
+
+    pos_map.insert(key, StoredPosition {
+        base: Vector2_t { x: base_x, y: base_y },
+        applied: Vector2_t { x: new_x, y: new_y },
+    });
+    RectTransform::set_anchoredPosition(target, Vector2_t { x: new_x, y: new_y });
 }
 
 pub fn drain_pending_offsets() {
@@ -321,17 +390,14 @@ pub fn drain_pending_offsets() {
     let config = Hachimi::instance().config.load();
 
     let mut pos_map = ORIGINAL_POSITIONS.lock().unwrap();
-    // vlean up entries for dead transforms to prevent unbounded growth
     pos_map.retain(|_, stored| {
-        // Keep entries where base != applied (i.e. we actually applied an offset)
-        // Stale entries from destroyed objects will be skipped below anyway
         (stored.base.x - stored.applied.x).abs() > 0.01 ||
         (stored.base.y - stored.applied.y).abs() > 0.01
     });
+
     for p in offsets {
         if p.transform.is_null() { continue; }
 
-        // skip destroyed transforms
         if !Object::IsNativeObjectAlive(p.transform) {
             if config.text_debug {
                 warn!("[PositionOffset] SKIP DEAD transform={:#x} offset=({}, {})",
@@ -341,52 +407,51 @@ pub fn drain_pending_offsets() {
             continue;
         }
 
-        let current_pos = RectTransform::get_anchoredPosition(p.transform);
-        let cur_x = current_pos.x;
-        let cur_y = current_pos.y;
-        let key = p.transform as usize;
-
-        let (base_x, base_y) = if let Some(stored) = pos_map.get(&key) {
-            let dx = (cur_x - stored.applied.x).abs();
-            let dy = (cur_y - stored.applied.y).abs();
-            if dx < 0.5 && dy < 0.5 {
-                (stored.base.x, stored.base.y)
-            } else {
-                (cur_x, cur_y)
-            }
-        } else {
-            (cur_x, cur_y)
-        };
-
-        let new_x = base_x + p.offset_x;
-        let new_y = base_y + p.offset_y;
-
-        if config.text_debug {
-            let name = unsafe {
-                let name_ptr = Object::get_name(p.transform);
-                if !name_ptr.is_null() { (*name_ptr).as_utf16str().to_string() } else { "<null>".to_string() }
-            };
-            info!("[PositionOffset] APPLY transform={:#x} name={} current=({}, {}) base=({}, {}) -> new=({}, {})",
-                p.transform as usize, name, cur_x, cur_y, base_x, base_y, new_x, new_y);
+        // handle sibling redirect
+        if let Some(ref sib_name) = p.sibling_name {
+            apply_sibling_offset(p.transform, sib_name, p.sibling_offset_x, p.sibling_offset_y, &mut pos_map, config.text_debug);
         }
 
-        pos_map.insert(key, StoredPosition {
-            base: Vector2_t { x: base_x, y: base_y },
-            applied: Vector2_t { x: new_x, y: new_y },
-        });
-        RectTransform::set_anchoredPosition(p.transform, Vector2_t { x: new_x, y: new_y });
+        // still apply self-offset if provided
+        if p.offset_x != 0.0 || p.offset_y != 0.0 {
+            let current_pos = RectTransform::get_anchoredPosition(p.transform);
+            let cur_x = current_pos.x;
+            let cur_y = current_pos.y;
+            let key = p.transform as usize;
+
+            let (base_x, base_y) = if let Some(stored) = pos_map.get(&key) {
+                let dx = (cur_x - stored.applied.x).abs();
+                let dy = (cur_y - stored.applied.y).abs();
+                if dx < 0.5 && dy < 0.5 { (stored.base.x, stored.base.y) } else { (cur_x, cur_y) }
+            } else {
+                (cur_x, cur_y)
+            };
+
+            let new_x = base_x + p.offset_x;
+            let new_y = base_y + p.offset_y;
+
+            if config.text_debug {
+                let name = unsafe {
+                    let name_ptr = Object::get_name(p.transform);
+                    if !name_ptr.is_null() { (*name_ptr).as_utf16str().to_string() } else { "<null>".to_string() }
+                };
+                info!("[PositionOffset] APPLY transform={:#x} name={} current=({}, {}) base=({}, {}) -> new=({}, {})",
+                    p.transform as usize, name, cur_x, cur_y, base_x, base_y, new_x, new_y);
+            }
+
+            pos_map.insert(key, StoredPosition {
+                base: Vector2_t { x: base_x, y: base_y },
+                applied: Vector2_t { x: new_x, y: new_y },
+            });
+            RectTransform::set_anchoredPosition(p.transform, Vector2_t { x: new_x, y: new_y });
+        }
     }
 }
 
 fn get_hierarchy_path_with_fallback(context: *mut Il2CppObject, fallback: *mut Il2CppObject) -> String {
     let path = get_hierarchy_path(context);
-    if path == "None" || path == "Unknown" {
-        get_hierarchy_path(fallback)
-    } else {
-        path
-    }
+    if path == "None" || path == "Unknown" { get_hierarchy_path(fallback) } else { path }
 }
-
 
 fn get_transform_safe(obj: *mut Il2CppObject) -> *mut Il2CppObject {
     if obj.is_null() { return null_mut(); }
@@ -404,12 +469,52 @@ fn get_transform_safe(obj: *mut Il2CppObject) -> *mut Il2CppObject {
     }
 }
 
+unsafe fn dump_sibling_subtree(sibling: *mut Il2CppObject, sibling_index: usize, parent_depth: usize) {
+    if sibling.is_null() { return; }
+    let klass = (*sibling).klass();
+    if !il2cpp_class_is_assignable_from(RectTransform::class(), klass) { return; }
+
+    let name_ptr = Object::get_name(sibling);
+    let name = if !name_ptr.is_null() { (*name_ptr).as_utf16str().to_string() } else { "<unnamed>".to_string() };
+
+    let size = RectTransform::get_sizeDelta(sibling);
+    let pos = RectTransform::get_anchoredPosition(sibling);
+    let anchor_min = RectTransform::get_anchorMin(sibling);
+    let anchor_max = RectTransform::get_anchorMax(sibling);
+    let pivot = RectTransform::get_pivot(sibling);
+    let scale = Transform::get_localScale(sibling);
+
+    info!(
+        "[LayoutDebug]   -> sibling[{}] depth={} name={} sizeDelta={:?} anchoredPosition={:?} anchorMin={:?} anchorMax={:?} pivot={:?} scale={:?}",
+        sibling_index, parent_depth, name, size, pos, anchor_min, anchor_max, pivot, scale
+    );
+
+    // one level deeper into the sibling's children
+    let child_count = Transform::get_childCount(sibling);
+    for i in 0..child_count {
+        let child = Transform::GetChild(sibling, i);
+        if child.is_null() { continue; }
+        let cklass = (*child).klass();
+        if !il2cpp_class_is_assignable_from(RectTransform::class(), cklass) { continue; }
+
+        let cname_ptr = Object::get_name(child);
+        let cname = if !cname_ptr.is_null() { (*cname_ptr).as_utf16str().to_string() } else { "<unnamed>".to_string() };
+        let csize = RectTransform::get_sizeDelta(child);
+        let cpos = RectTransform::get_anchoredPosition(child);
+        info!(
+            "[LayoutDebug]      -> sibling[{}].child[{}] name={} sizeDelta={:?} anchoredPosition={:?}",
+            sibling_index, i, cname, csize, cpos
+        );
+    }
+}
+
 fn dump_properties(obj: *mut Il2CppObject, path: &str, settings: &TextGenerationSettings_t) {
     info!("[PropertyDump] --- Start Dump for: {} ---", path);
     info!("[PropertyDump] TextGenerationSettings: fontSize={}, lineSpacing={}, horizontalOverflow={}, verticalOverflow={}, bestFit={}, minSize={}, maxSize={}, extents={:?}, pivot={:?}, scaleFactor={}",
-        settings.fontSize, settings.lineSpacing, settings.horizontalOverflow, settings.verticalOverflow, settings.resizeTextForBestFit, settings.resizeTextMinSize, settings.resizeTextMaxSize, settings.generationExtents, settings.pivot, settings.scaleFactor);
-    
-    // attempt to get RectTransform and its sizeDelta
+        settings.fontSize, settings.lineSpacing, settings.horizontalOverflow, settings.verticalOverflow,
+        settings.resizeTextForBestFit, settings.resizeTextMinSize, settings.resizeTextMaxSize,
+        settings.generationExtents, settings.pivot, settings.scaleFactor);
+
     let rect_transform_obj = get_transform_safe(obj);
     if !rect_transform_obj.is_null() {
         unsafe {
@@ -418,7 +523,8 @@ fn dump_properties(obj: *mut Il2CppObject, path: &str, settings: &TextGeneration
                 use crate::il2cpp::hook::UnityEngine_CoreModule::{RectTransform, Transform};
 
                 let size = RectTransform::get_sizeDelta(rect_transform_obj);
-                info!("[PropertyDump] RectTransform sizeDelta: {:?}", size);
+                let pos = RectTransform::get_anchoredPosition(rect_transform_obj);
+                info!("[PropertyDump] RectTransform sizeDelta: {:?} anchoredPosition: {:?}", size, pos);
 
                 let mut curr = rect_transform_obj;
                 let mut depth = 0;
@@ -432,17 +538,28 @@ fn dump_properties(obj: *mut Il2CppObject, path: &str, settings: &TextGeneration
                     };
 
                     let size = RectTransform::get_sizeDelta(curr);
+                    let pos = RectTransform::get_anchoredPosition(curr);
                     let anchor_min = RectTransform::get_anchorMin(curr);
                     let anchor_max = RectTransform::get_anchorMax(curr);
                     let pivot = RectTransform::get_pivot(curr);
                     let scale = Transform::get_localScale(curr);
 
                     info!(
-                        "[LayoutDebug] depth={} name={} sizeDelta={:?} anchorMin={:?} anchorMax={:?} pivot={:?} scale={:?}",
-                        depth, name, size, anchor_min, anchor_max, pivot, scale
+                        "[LayoutDebug] depth={} name={} sizeDelta={:?} anchoredPosition={:?} anchorMin={:?} anchorMax={:?} pivot={:?} scale={:?}",
+                        depth, name, size, pos, anchor_min, anchor_max, pivot, scale
                     );
 
-                    curr = Transform::get_parent(curr);
+                    let parent = Transform::get_parent(curr);
+                    if !parent.is_null() {
+                        let child_count = Transform::get_childCount(parent);
+                        for i in 0..child_count {
+                            let child = Transform::GetChild(parent, i);
+                            if child == curr { continue; }
+                            dump_sibling_subtree(child, i as usize, depth as usize);
+                        }
+                    }
+
+                    curr = parent;
                     depth += 1;
                 }
             } else {
