@@ -142,7 +142,7 @@ extern "C" fn PopulateWithErrors(
             settings.fontSize = size;
         }
 
-        if config.text_path_debug {
+        if config.text_debug && config.text_path_debug {
             info!("[PopulateWithErrors] path: {}, total_overrides: {}", path, text_settings.text_properties_overrides.len());
         }
 
@@ -235,19 +235,19 @@ fn queue_position_offset(context: *mut Il2CppObject, fallback: *mut Il2CppObject
         let mut transform = unsafe { (*start_obj).transform() };
         if !transform.is_null() {
             let ancestor_levels = props.position_target_ancestor.unwrap_or(0);
-            if config.text_position_debug {
-                info!("[PositionOffset] QUEUE DIRECT start={:#x} name={} target_ancestor={}", transform as usize, unsafe { (*transform).name() }, ancestor_levels);
+            if config.text_debug && config.text_position_debug {
+                debug!("[PositionOffset] QUEUE DIRECT start={:#x} name={} target_ancestor={}", transform as usize, unsafe { (*transform).name() }, ancestor_levels);
             }
             for i in 0..ancestor_levels {
                 let parent = Transform::get_parent(transform);
                 if parent.is_null() {
-                    if config.text_position_debug { warn!("[PositionOffset] QUEUE DIRECT hit null parent at level {}", i); }
+                    if config.text_debug && config.text_position_debug { debug!("[PositionOffset] QUEUE DIRECT hit null parent at level {}", i); }
                     break;
                 }
                 transform = parent;
             }
-            if config.text_position_debug {
-                info!("[PositionOffset] QUEUE DIRECT resolved_target={:#x} name={}", transform as usize, unsafe { (*transform).name() });
+            if config.text_debug && config.text_position_debug {
+                debug!("[PositionOffset] QUEUE DIRECT resolved_target={:#x} name={}", transform as usize, unsafe { (*transform).name() });
             }
             actions.push(PendingAction {
                 target: ActionTarget::Direct(transform),
@@ -284,19 +284,19 @@ fn queue_position_offset(context: *mut Il2CppObject, fallback: *mut Il2CppObject
             let mut anchor = unsafe { (*start_obj).transform() };
             if anchor.is_null() { continue; }
             let ancestor_levels = sib.target_ancestor.or(props.sibling_target_ancestor).or(props.position_target_ancestor).unwrap_or(0);
-            if config.text_position_debug {
-                info!("[PositionOffset] QUEUE SIBLING start={:#x} name={} target_ancestor={}", anchor as usize, unsafe { (*anchor).name() }, ancestor_levels);
+            if config.text_debug && config.text_position_debug {
+                debug!("[PositionOffset] QUEUE SIBLING start={:#x} name={} target_ancestor={}", anchor as usize, unsafe { (*anchor).name() }, ancestor_levels);
             }
             for i in 0..ancestor_levels {
                 let parent = Transform::get_parent(anchor);
                 if parent.is_null() {
-                    if config.text_position_debug { warn!("[PositionOffset] QUEUE SIBLING hit null parent at level {}", i); }
+                    if config.text_debug && config.text_position_debug { debug!("[PositionOffset] QUEUE SIBLING hit null parent at level {}", i); }
                     break;
                 }
                 anchor = parent;
             }
-            if config.text_position_debug {
-                info!("[PositionOffset] QUEUE SIBLING resolved_anchor={:#x} name={}", anchor as usize, unsafe { (*anchor).name() });
+            if config.text_debug && config.text_position_debug {
+                debug!("[PositionOffset] QUEUE SIBLING resolved_anchor={:#x} name={}", anchor as usize, unsafe { (*anchor).name() });
             }
             actions.push(PendingAction {
                 target: ActionTarget::Sibling {
@@ -379,7 +379,7 @@ fn apply_common_overrides(
                 let new_y = base_y + props.position_offset_y.unwrap_or(0.0);
 
                 if debug {
-                    info!("[PositionOffset] APPLY transform={:#x} base=({}, {}) -> new=({}, {})",
+                    debug!("[PositionOffset] APPLY transform={:#x} base=({}, {}) -> new=({}, {})",
                         key, base_x, base_y, new_x, new_y);
                 }
 
@@ -434,23 +434,23 @@ pub fn drain_pending_offsets() {
         for action in p.actions {
             match action.target {
                 ActionTarget::Direct(transform) => {
-                    apply_common_overrides(transform, &action.properties, &mut pos_map, config.text_position_debug);
+                    apply_common_overrides(transform, &action.properties, &mut pos_map, config.text_debug && config.text_position_debug);
                 }
                 ActionTarget::Sibling { anchor, name } => {
-                    if config.text_position_debug {
-                        info!("[SiblingOffset] DRAIN SIBLING anchor={:#x} name={} searching for={}", anchor as usize, get_hierarchy_path(anchor), name);
+                    if config.text_debug && config.text_position_debug {
+                        debug!("[SiblingOffset] DRAIN SIBLING anchor={:#x} name={} searching for={}", anchor as usize, get_hierarchy_path(anchor), name);
                     }
                     for sib_name in name.split(',').map(|s| s.trim()) {
                         if sib_name.is_empty() { continue; }
                         if let Some(sibling) = find_sibling_by_name(anchor, sib_name) {
-                            if config.text_position_debug {
-                                info!("[SiblingOffset] FOUND sibling={} transform={:#x}", sib_name, sibling as usize);
+                            if config.text_debug && config.text_position_debug {
+                                debug!("[SiblingOffset] FOUND sibling={} transform={:#x}", sib_name, sibling as usize);
                             }
-                            apply_common_overrides(sibling, &action.properties, &mut pos_map, config.text_position_debug);
-                        } else if config.text_position_debug {
+                            apply_common_overrides(sibling, &action.properties, &mut pos_map, config.text_debug && config.text_position_debug);
+                        } else if config.text_debug && config.text_position_debug {
                             let parent = Transform::get_parent(anchor);
                             let parent_name = if parent.is_null() { "null".to_string() } else { get_hierarchy_path(parent) };
-                            warn!("[SiblingOffset] NOT FOUND name={} under parent={} of anchor {:#x}", sib_name, parent_name, anchor as usize);
+                            debug!("[SiblingOffset] NOT FOUND name={} under parent={} of anchor {:#x}", sib_name, parent_name, anchor as usize);
                         }
                     }
                 }

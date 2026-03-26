@@ -1875,6 +1875,14 @@ impl ConfigEditor {
                 ui.checkbox(&mut config.text_debug, "");
                 ui.end_row();
 
+                if !config.text_debug {
+                    config.text_log = false;
+                    config.text_property_dump = false;
+                    config.text_localize_dump = false;
+                    config.text_position_debug = false;
+                    config.text_path_debug = false;
+                }
+
                 if config.text_debug {
                     ui.label(format!("  \u{21b3} {}", t!("config_editor.text_log")));
                     ui.checkbox(&mut config.text_log, "");
