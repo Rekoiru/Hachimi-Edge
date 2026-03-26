@@ -160,10 +160,59 @@ impl Il2CppStringExt for Il2CppString {
 
 pub trait Il2CppObjectExt {
     fn klass(&self) -> *mut Il2CppClass;
+    fn name(&self) -> String;
+    fn transform(&self) -> *mut Il2CppObject;
+    fn game_object(&self) -> *mut Il2CppObject;
 }
 
 impl Il2CppObjectExt for Il2CppObject {
     fn klass(&self) -> *mut Il2CppClass {
         unsafe { *self.__bindgen_anon_1.klass.as_ref() }
+    }
+
+    fn name(&self) -> String {
+        let this = self as *const _ as *mut _;
+        unsafe {
+            let klass = self.klass();
+            if super::api::il2cpp_class_is_assignable_from(super::hook::UnityEngine_CoreModule::Object::class(), klass) {
+                let name_ptr = Object::get_name(this);
+                if name_ptr.is_null() {
+                    return "None".to_string();
+                }
+                (*name_ptr).as_utf16str().to_string()
+            } else {
+                let name = (*klass).name;
+                if name.is_null() {
+                    return "None".to_string();
+                }
+                std::ffi::CStr::from_ptr(name).to_string_lossy().into_owned()
+            }
+        }
+    }
+
+    fn transform(&self) -> *mut Il2CppObject {
+        let this = self as *const _ as *mut _;
+        let klass = self.klass();
+        if super::api::il2cpp_class_is_assignable_from(super::hook::UnityEngine_CoreModule::Component::class(), klass) {
+            super::hook::UnityEngine_CoreModule::Component::get_transform(this)
+        } else if super::api::il2cpp_class_is_assignable_from(super::hook::UnityEngine_CoreModule::GameObject::class(), klass) {
+            super::hook::UnityEngine_CoreModule::GameObject::get_transform(this)
+        } else if super::api::il2cpp_class_is_assignable_from(super::hook::UnityEngine_CoreModule::Transform::class(), klass) {
+            this
+        } else {
+            std::ptr::null_mut()
+        }
+    }
+
+    fn game_object(&self) -> *mut Il2CppObject {
+        let this = self as *const _ as *mut _;
+        let klass = self.klass();
+        if super::api::il2cpp_class_is_assignable_from(super::hook::UnityEngine_CoreModule::Component::class(), klass) {
+            super::hook::UnityEngine_CoreModule::Component::get_gameObject(this)
+        } else if super::api::il2cpp_class_is_assignable_from(super::hook::UnityEngine_CoreModule::GameObject::class(), klass) {
+            this
+        } else {
+            std::ptr::null_mut()
+        }
     }
 }

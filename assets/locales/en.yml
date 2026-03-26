@@ -135,6 +135,8 @@ config_editor:
   text_log: "Log text processed"
   text_property_dump: "Dump UI properties"
   text_localize_dump: "Dump Localized strings"
+  text_position_debug: "Log position offsets"
+  text_path_debug: "Log UI paths"
   enable_file_logging: "Enable file logging"
   apply_atlas_workaround: "Apply TL Atlas Workaround"
   translator_mode: "Translator mode"

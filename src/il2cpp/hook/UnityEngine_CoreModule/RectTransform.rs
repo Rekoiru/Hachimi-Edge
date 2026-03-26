@@ -25,6 +25,9 @@ impl_addr_wrapper_fn!(get_anchorMax, GET_ANCHORMAX_ADDR, Vector2_t, this: *mut I
 static mut GET_PIVOT_ADDR: usize = 0;
 impl_addr_wrapper_fn!(get_pivot, GET_PIVOT_ADDR, Vector2_t, this: *mut Il2CppObject);
 
+static mut SET_PIVOT_ADDR: usize = 0;
+impl_addr_wrapper_fn!(set_pivot, SET_PIVOT_ADDR, (), this: *mut Il2CppObject, value: Vector2_t);
+
 static mut GET_ANCHOREDPOSITION_ADDR: usize = 0;
 impl_addr_wrapper_fn!(get_anchoredPosition, GET_ANCHOREDPOSITION_ADDR, Vector2_t, this: *mut Il2CppObject);
 
@@ -42,6 +45,7 @@ pub fn init(UnityEngine_CoreModule: *const Il2CppImage) {
         GET_ANCHORMIN_ADDR = get_method_addr(RectTransform, c"get_anchorMin", 0);
         GET_ANCHORMAX_ADDR = get_method_addr(RectTransform, c"get_anchorMax", 0);
         GET_PIVOT_ADDR = get_method_addr(RectTransform, c"get_pivot", 0);
+        SET_PIVOT_ADDR = get_method_addr(RectTransform, c"set_pivot", 1);
         GET_ANCHOREDPOSITION_ADDR = get_method_addr(RectTransform, c"get_anchoredPosition", 0);
         SET_ANCHOREDPOSITION_ADDR = get_method_addr(RectTransform, c"set_anchoredPosition", 1);
     }

@@ -311,6 +311,10 @@ pub struct Config {
     pub text_property_dump: bool,
     #[serde(default)]
     pub text_localize_dump: bool,
+    #[serde(default)]
+    pub text_position_debug: bool,
+    #[serde(default)]
+    pub text_path_debug: bool,
     pub localized_data_dir: Option<String>,
     pub target_fps: Option<i32>,
     #[serde(default = "Config::default_open_browser_url")]
@@ -528,6 +532,53 @@ impl Language {
     }
 }
 
+#[derive(Deserialize, Serialize, Clone, Default)]
+pub struct CommonOverrides {
+    pub font_size: Option<i32>,
+    pub line_spacing: Option<f32>,
+    pub horizontal_overflow: Option<i32>,
+    pub vertical_overflow: Option<i32>,
+    pub best_fit: Option<bool>,
+    pub min_size: Option<i32>,
+    pub max_size: Option<i32>,
+    pub update_bounds: Option<bool>,
+    pub generate_out_of_bounds: Option<bool>,
+    pub align_by_geometry: Option<bool>,
+    pub extents_x: Option<f32>,
+    pub extents_y: Option<f32>,
+    pub rich_text: Option<bool>,
+    pub scale_factor: Option<f32>,
+    pub font_style: Option<i32>,
+    pub text_anchor: Option<i32>,
+    pub pivot_x: Option<f32>,
+    pub pivot_y: Option<f32>,
+    pub position_offset_x: Option<f32>,
+    pub position_offset_y: Option<f32>,
+    pub text_override: Option<String>,
+}
+
+#[derive(Deserialize, Serialize, Clone, Default)]
+pub struct SiblingOverride {
+    pub name: String,
+    pub target_ancestor: Option<u32>,
+    #[serde(flatten)]
+    pub properties: CommonOverrides,
+}
+
+#[derive(Deserialize, Serialize, Clone, Default)]
+pub struct TextPropertyOverrides {
+    #[serde(flatten)]
+    pub common: CommonOverrides,
+    pub position_target_ancestor: Option<u32>,
+
+    pub sibling_name: Option<String>,
+    pub sibling_offset_x: Option<f32>,
+    pub sibling_offset_y: Option<f32>,
+    pub sibling_target_ancestor: Option<u32>,
+
+    pub siblings: Option<Vec<SiblingOverride>>,
+}
+
 #[derive(Deserialize, Serialize, Clone)]
 pub struct TextSettings {
     #[serde(default = "TextSettings::default_font_scale")]
@@ -535,7 +586,7 @@ pub struct TextSettings {
     #[serde(default)]
     pub font_overrides: FnvHashMap<String, i32>,
     #[serde(default)]
-    pub text_properties_overrides: FnvHashMap<String, crate::il2cpp::hook::UnityEngine_TextRenderingModule::TextGenerator::TextPropertyOverrides>,
+    pub text_properties_overrides: FnvHashMap<String, TextPropertyOverrides>,
 }
 
 impl TextSettings {
@@ -622,9 +673,11 @@ impl LocalizedData {
             plural_form,
             ordinal_form,
 
-            text_settings: ArcSwap::new(Arc::new(
-                Self::load_dict_static(&path, config.text_config.as_ref()).unwrap_or_default()
-            )),
+            text_settings: {
+                let settings: TextSettings = Self::load_dict_static(&path, config.text_config.as_ref()).unwrap_or_default();
+                info!("Loaded {} text overrides.", settings.text_properties_overrides.len());
+                ArcSwap::new(Arc::new(settings))
+            },
 
             config,
             path
@@ -864,13 +917,3 @@ pub struct AssetMetadata {
     pub bundle_name: Option<String>
 }
 
-#[derive(Deserialize, Serialize, Clone, Default)]
-pub struct TextPropertyOverrides {
-    pub font_size: Option<i32>,
-    pub line_spacing: Option<f32>,
-    pub horizontal_overflow: Option<i32>,
-    pub vertical_overflow: Option<i32>,
-    pub best_fit: Option<bool>,
-    pub min_size: Option<i32>,
-    pub max_size: Option<i32>,
-}

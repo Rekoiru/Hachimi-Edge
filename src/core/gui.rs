@@ -1887,6 +1887,14 @@ impl ConfigEditor {
                     ui.label(format!("  \u{21b3} {}", t!("config_editor.text_localize_dump")));
                     ui.checkbox(&mut config.text_localize_dump, "");
                     ui.end_row();
+
+                    ui.label(format!("  \u{21b3} {}", t!("config_editor.text_position_debug")));
+                    ui.checkbox(&mut config.text_position_debug, "");
+                    ui.end_row();
+
+                    ui.label(format!("  \u{21b3} {}", t!("config_editor.text_path_debug")));
+                    ui.checkbox(&mut config.text_path_debug, "");
+                    ui.end_row();
                 }
 
                 ui.label(t!("config_editor.enable_file_logging"));

@@ -5,6 +5,11 @@ pub fn class() -> *mut Il2CppClass {
     unsafe { CLASS }
 }
 
+static mut TYPE_OBJECT: *mut Il2CppObject = 0 as _;
+pub fn type_object() -> *mut Il2CppObject {
+    unsafe { TYPE_OBJECT }
+}
+
 static mut GET_LINESPACING_ADDR: usize = 0;
 impl_addr_wrapper_fn!(get_lineSpacing, GET_LINESPACING_ADDR, f32, this: *mut Il2CppObject);
 
@@ -52,6 +57,7 @@ pub fn init(UnityEngine_UI: *const Il2CppImage) {
     
     unsafe {
         CLASS = Text;
+        TYPE_OBJECT = crate::il2cpp::api::il2cpp_type_get_object(crate::il2cpp::api::il2cpp_class_get_type(Text));
         GET_LINESPACING_ADDR = get_method_addr(Text, c"get_lineSpacing", 0);
         SET_LINESPACING_ADDR = get_method_addr(Text, c"set_lineSpacing", 1);
         GET_FONTSIZE_ADDR = get_method_addr(Text, c"get_fontSize", 0);

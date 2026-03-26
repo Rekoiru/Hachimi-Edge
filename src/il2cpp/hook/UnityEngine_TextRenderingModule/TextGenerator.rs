@@ -1,42 +1,11 @@
 use std::sync::atomic::Ordering;
-use crate::{core::{template, Hachimi}, il2cpp::{api::il2cpp_class_is_assignable_from, ext::{Il2CppObjectExt, Il2CppStringExt, StringExt}, hook::UnityEngine_CoreModule::{Component, GameObject, Object, RectTransform, Transform}, sql::{IS_SYSTEM_TEXT_QUERY, TDQ_IS_SKILL_LEARNING_QUERY}, types::*}};
-use fnv::FnvHashSet;
-use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::sync::Mutex;
 use std::ptr::null_mut;
 use std::ops::Not;
-use std::ffi::CStr;
-use serde::{Deserialize, Serialize};
-
-#[derive(Deserialize, Serialize, Clone, Default)]
-pub struct TextPropertyOverrides {
-    pub font_size: Option<i32>,
-    pub line_spacing: Option<f32>,
-    pub horizontal_overflow: Option<i32>,
-    pub vertical_overflow: Option<i32>,
-    pub best_fit: Option<bool>,
-    pub min_size: Option<i32>,
-    pub max_size: Option<i32>,
-    pub update_bounds: Option<bool>,
-    pub generate_out_of_bounds: Option<bool>,
-    pub align_by_geometry: Option<bool>,
-    pub extents_x: Option<f32>,
-    pub extents_y: Option<f32>,
-    pub rich_text: Option<bool>,
-    pub scale_factor: Option<f32>,
-    pub font_style: Option<i32>,
-    pub text_anchor: Option<i32>,
-    pub pivot_x: Option<f32>,
-    pub pivot_y: Option<f32>,
-    pub position_offset_x: Option<f32>,
-    pub position_offset_y: Option<f32>,
-    pub position_target_ancestor: Option<u32>,
-    pub text_override: Option<String>,
-    pub sibling_name: Option<String>,
-    pub sibling_offset_x: Option<f32>,
-    pub sibling_offset_y: Option<f32>,
-}
+use fnv::FnvHashSet;
+use once_cell::sync::Lazy;
+use crate::{core::{template, Hachimi, hachimi::{CommonOverrides, SiblingOverride, TextPropertyOverrides}}, il2cpp::{api::il2cpp_class_is_assignable_from, ext::{Il2CppObjectExt, Il2CppStringExt, StringExt}, hook::UnityEngine_CoreModule::{GameObject, Object, RectTransform, Transform}, sql::{IS_SYSTEM_TEXT_QUERY, TDQ_IS_SKILL_LEARNING_QUERY}, types::*}};
 
 static DUMPED_PATHS: Lazy<Mutex<FnvHashSet<String>>> = Lazy::new(|| Mutex::default());
 static SYSTEM_TEXT_COMPONENTS: Lazy<Mutex<FnvHashSet<i32>>> = Lazy::new(|| Mutex::default());
@@ -47,13 +16,20 @@ struct StoredPosition {
 }
 static ORIGINAL_POSITIONS: Lazy<Mutex<HashMap<usize, StoredPosition>>> = Lazy::new(|| Mutex::new(HashMap::new()));
 
+#[derive(Clone)]
+enum ActionTarget {
+    Direct(*mut Il2CppObject),
+    Sibling { anchor: *mut Il2CppObject, name: String },
+}
+
+struct PendingAction {
+    target: ActionTarget,
+    properties: CommonOverrides,
+}
+unsafe impl Send for PendingAction {}
+
 struct PendingOffset {
-    transform: *mut Il2CppObject,
-    offset_x: f32,
-    offset_y: f32,
-    sibling_name: Option<String>,
-    sibling_offset_x: f32,
-    sibling_offset_y: f32,
+    actions: Vec<PendingAction>,
 }
 unsafe impl Send for PendingOffset {}
 static PENDING_OFFSETS: Lazy<Mutex<Vec<PendingOffset>>> = Lazy::new(|| Mutex::new(Vec::new()));
@@ -63,13 +39,10 @@ pub fn mark_as_system_text_component(this: *mut Il2CppObject) {
     let id = Object::get_instanceID(this);
     SYSTEM_TEXT_COMPONENTS.lock().unwrap().insert(id);
     unsafe {
-        let klass = (*this).klass();
-        if il2cpp_class_is_assignable_from(crate::il2cpp::hook::UnityEngine_UI::Text::class(), klass) {
-            let go = Component::get_gameObject(this);
-            if !go.is_null() {
-                let go_id = Object::get_instanceID(go);
-                SYSTEM_TEXT_COMPONENTS.lock().unwrap().insert(go_id);
-            }
+        let go = (*this).game_object();
+        if !go.is_null() {
+            let go_id = Object::get_instanceID(go);
+            SYSTEM_TEXT_COMPONENTS.lock().unwrap().insert(go_id);
         }
     }
 }
@@ -169,33 +142,38 @@ extern "C" fn PopulateWithErrors(
             settings.fontSize = size;
         }
 
-        if let Some(props) = find_text_property_override(&text_settings.text_properties_overrides, &path) {
-            if let Some(fs) = props.font_size { settings.fontSize = fs; }
-            if let Some(ls) = props.line_spacing { settings.lineSpacing = ls; }
-            if let Some(ho) = props.horizontal_overflow { settings.horizontalOverflow = ho; }
-            if let Some(vo) = props.vertical_overflow { settings.verticalOverflow = vo; }
-            if let Some(bf) = props.best_fit { settings.resizeTextForBestFit = bf; }
-            if let Some(min) = props.min_size { settings.resizeTextMinSize = min; }
-            if let Some(max) = props.max_size { settings.resizeTextMaxSize = max; }
-            if let Some(ub) = props.update_bounds { settings.updateBounds = ub; }
-            if let Some(oob) = props.generate_out_of_bounds { settings.generateOutOfBounds = oob; }
-            if let Some(abg) = props.align_by_geometry { settings.alignByGeometry = abg; }
-            if let Some(ex) = props.extents_x { settings.generationExtents.x = ex; }
-            if let Some(ey) = props.extents_y { settings.generationExtents.y = ey; }
-            if let Some(rt) = props.rich_text { settings.richText = rt; }
-            if let Some(sf) = props.scale_factor { settings.scaleFactor = sf; }
-            if let Some(fs) = props.font_style { settings.fontStyle = fs; }
-            if let Some(ta) = props.text_anchor { settings.textAnchor = ta; }
-            if let Some(px) = props.pivot_x { settings.pivot.x = px; }
-            if let Some(py) = props.pivot_y { settings.pivot.y = py; }
+        if config.text_path_debug {
+            info!("[PopulateWithErrors] path: {}, total_overrides: {}", path, text_settings.text_properties_overrides.len());
+        }
 
-            if let Some(ref override_text) = props.text_override {
+        if let Some(props) = find_text_property_override(&text_settings.text_properties_overrides, &path) {
+            let common = &props.common;
+            if let Some(fs) = common.font_size { settings.fontSize = fs; }
+            if let Some(ls) = common.line_spacing { settings.lineSpacing = ls; }
+            if let Some(ho) = common.horizontal_overflow { settings.horizontalOverflow = ho; }
+            if let Some(vo) = common.vertical_overflow { settings.verticalOverflow = vo; }
+            if let Some(bf) = common.best_fit { settings.resizeTextForBestFit = bf; }
+            if let Some(min) = common.min_size { settings.resizeTextMinSize = min; }
+            if let Some(max) = common.max_size { settings.resizeTextMaxSize = max; }
+            if let Some(ub) = common.update_bounds { settings.updateBounds = ub; }
+            if let Some(oob) = common.generate_out_of_bounds { settings.generateOutOfBounds = oob; }
+            if let Some(abg) = common.align_by_geometry { settings.alignByGeometry = abg; }
+            if let Some(ex) = common.extents_x { settings.generationExtents.x = ex; }
+            if let Some(ey) = common.extents_y { settings.generationExtents.y = ey; }
+            if let Some(rt) = common.rich_text { settings.richText = rt; }
+            if let Some(sf) = common.scale_factor { settings.scaleFactor = sf; }
+            if let Some(fs) = common.font_style { settings.fontStyle = fs; }
+            if let Some(ta) = common.text_anchor { settings.textAnchor = ta; }
+            if let Some(px) = common.pivot_x { settings.pivot.x = px; }
+            if let Some(py) = common.pivot_y { settings.pivot.y = py; }
+
+            if let Some(ref override_text) = common.text_override {
                 new_str = Some(override_text);
                 has_template = override_text.contains('$');
             }
 
-            if props.position_offset_x.is_some() || props.position_offset_y.is_some()
-                || props.sibling_name.is_some()
+            if common.position_offset_x.is_some() || common.position_offset_y.is_some()
+                || props.sibling_name.is_some() || props.siblings.as_ref().map(|s: &Vec<SiblingOverride>| !s.is_empty()).unwrap_or(false)
             {
                 queue_position_offset(context, this, props);
             }
@@ -249,135 +227,192 @@ extern "C" fn PopulateWithErrors(
 
 fn queue_position_offset(context: *mut Il2CppObject, fallback: *mut Il2CppObject, props: &TextPropertyOverrides) {
     let start_obj = if !context.is_null() { context } else if !fallback.is_null() { fallback } else { return; };
-
-    let mut transform = get_transform_safe(start_obj);
-    if transform.is_null() { return; }
-
-    let ancestor_levels = props.position_target_ancestor.unwrap_or(0);
-    for _ in 0..ancestor_levels {
-        let parent = Transform::get_parent(transform);
-        if parent.is_null() { break; }
-        transform = parent;
-    }
-
-    unsafe {
-        let klass = (*transform).klass();
-        if !il2cpp_class_is_assignable_from(RectTransform::class(), klass) { return; }
-    }
-
     let config = Hachimi::instance().config.load();
-    if config.text_debug {
-        let name = unsafe {
-            let name_ptr = Object::get_name(transform);
-            if !name_ptr.is_null() { (*name_ptr).as_utf16str().to_string() } else { "<null>".to_string() }
-        };
-        let alive = Object::IsNativeObjectAlive(transform);
-        info!("[PositionOffset] QUEUE transform={:#x} name={} ancestor={} offset=({}, {}) sibling={:?} alive={}",
-            transform as usize, name, ancestor_levels,
-            props.position_offset_x.unwrap_or(0.0), props.position_offset_y.unwrap_or(0.0),
-            props.sibling_name, alive);
+
+    let mut actions = Vec::new();
+
+    if props.common.position_offset_x.is_some() || props.common.position_offset_y.is_some() || props.common.font_size.is_some() {
+        let mut transform = unsafe { (*start_obj).transform() };
+        if !transform.is_null() {
+            let ancestor_levels = props.position_target_ancestor.unwrap_or(0);
+            if config.text_position_debug {
+                info!("[PositionOffset] QUEUE DIRECT start={:#x} name={} target_ancestor={}", transform as usize, unsafe { (*transform).name() }, ancestor_levels);
+            }
+            for i in 0..ancestor_levels {
+                let parent = Transform::get_parent(transform);
+                if parent.is_null() {
+                    if config.text_position_debug { warn!("[PositionOffset] QUEUE DIRECT hit null parent at level {}", i); }
+                    break;
+                }
+                transform = parent;
+            }
+            if config.text_position_debug {
+                info!("[PositionOffset] QUEUE DIRECT resolved_target={:#x} name={}", transform as usize, unsafe { (*transform).name() });
+            }
+            actions.push(PendingAction {
+                target: ActionTarget::Direct(transform),
+                properties: props.common.clone(),
+            });
+        }
     }
 
-    let mut pending = PENDING_OFFSETS.lock().unwrap();
-    pending.push(PendingOffset {
-        transform,
-        offset_x: props.position_offset_x.unwrap_or(0.0),
-        offset_y: props.position_offset_y.unwrap_or(0.0),
-        sibling_name: props.sibling_name.clone(),
-        sibling_offset_x: props.sibling_offset_x.unwrap_or(0.0),
-        sibling_offset_y: props.sibling_offset_y.unwrap_or(0.0),
-    });
+    if let Some(ref sib_name) = props.sibling_name {
+        let mut anchor = unsafe { (*start_obj).transform() };
+        if !anchor.is_null() {
+            let ancestor_levels = props.sibling_target_ancestor.or(props.position_target_ancestor).unwrap_or(0);
+            for _ in 0..ancestor_levels {
+                let parent = Transform::get_parent(anchor);
+                if parent.is_null() { break; }
+                anchor = parent;
+            }
+            actions.push(PendingAction {
+                target: ActionTarget::Sibling {
+                    anchor,
+                    name: sib_name.clone(),
+                },
+                properties: CommonOverrides {
+                    position_offset_x: props.sibling_offset_x,
+                    position_offset_y: props.sibling_offset_y,
+                    ..Default::default()
+                },
+            });
+        }
+    }
+
+    if let Some(ref siblings) = props.siblings {
+        for sib in siblings {
+            let mut anchor = unsafe { (*start_obj).transform() };
+            if anchor.is_null() { continue; }
+            let ancestor_levels = sib.target_ancestor.or(props.sibling_target_ancestor).or(props.position_target_ancestor).unwrap_or(0);
+            if config.text_position_debug {
+                info!("[PositionOffset] QUEUE SIBLING start={:#x} name={} target_ancestor={}", anchor as usize, unsafe { (*anchor).name() }, ancestor_levels);
+            }
+            for i in 0..ancestor_levels {
+                let parent = Transform::get_parent(anchor);
+                if parent.is_null() {
+                    if config.text_position_debug { warn!("[PositionOffset] QUEUE SIBLING hit null parent at level {}", i); }
+                    break;
+                }
+                anchor = parent;
+            }
+            if config.text_position_debug {
+                info!("[PositionOffset] QUEUE SIBLING resolved_anchor={:#x} name={}", anchor as usize, unsafe { (*anchor).name() });
+            }
+            actions.push(PendingAction {
+                target: ActionTarget::Sibling {
+                    anchor,
+                    name: sib.name.clone(),
+                },
+                properties: sib.properties.clone(),
+            });
+        }
+    }
+
+    if !actions.is_empty() {
+        let mut pending = PENDING_OFFSETS.lock().unwrap();
+        pending.push(PendingOffset { actions });
+    }
 }
 
-fn apply_sibling_offset(
-    anchor_transform: *mut Il2CppObject,
-    sibling_name: &str,
-    offset_x: f32,
-    offset_y: f32,
+fn find_sibling_by_name(anchor: *mut Il2CppObject, sibling_name: &str) -> Option<*mut Il2CppObject> {
+    if anchor.is_null() { return None; }
+    let parent = Transform::get_parent(anchor);
+    if parent.is_null() { return None; }
+
+
+    let parts: Vec<&str> = sibling_name.split('/').collect();
+    let mut current = parent;
+
+    for part in parts {
+        let mut found = null_mut();
+        let child_count = Transform::get_childCount(current);
+        for i in 0..child_count {
+            let child = Transform::GetChild(current, i);
+            if child.is_null() { continue; }
+            if unsafe { (*child).name().trim() == part.trim() } {
+                found = child;
+                break;
+            }
+        }
+        if found.is_null() { return None; }
+        current = found;
+    }
+    Some(current)
+}
+
+fn apply_common_overrides(
+    target: *mut Il2CppObject,
+    props: &CommonOverrides,
     pos_map: &mut HashMap<usize, StoredPosition>,
     debug: bool,
 ) {
-    // split on comma, trim whitespace, apply to each name
-    for name in sibling_name.split(',').map(|s| s.trim()) {
-        if name.is_empty() { continue; }
-        apply_single_sibling_offset(anchor_transform, name, offset_x, offset_y, pos_map, debug);
-    }
-}
+    if target.is_null() { return; }
+    if !Object::IsNativeObjectAlive(target) { return; }
 
-fn apply_single_sibling_offset(
-    anchor_transform: *mut Il2CppObject,
-    sibling_name: &str,
-    offset_x: f32,
-    offset_y: f32,
-    pos_map: &mut HashMap<usize, StoredPosition>,
-    debug: bool,
-) {
-    if anchor_transform.is_null() { return; }
-
-    let parent = Transform::get_parent(anchor_transform);
-    if parent.is_null() { return; }
-
-    let child_count = Transform::get_childCount(parent);
-    let mut target: *mut Il2CppObject = null_mut();
+    let key = target as usize;
 
     unsafe {
-        for i in 0..child_count {
-            let child = Transform::GetChild(parent, i);
-            if child.is_null() { continue; }
-            let name_ptr = Object::get_name(child);
-            if name_ptr.is_null() { continue; }
-            let name = (*name_ptr).as_utf16str().to_string();
-            if name == sibling_name {
-                target = child;
-                break;
+        let klass = (*target).klass();
+        if il2cpp_class_is_assignable_from(RectTransform::class(), klass) {
+            if let Some(px) = props.pivot_x {
+                let mut pivot = RectTransform::get_pivot(target);
+                pivot.x = px;
+                RectTransform::set_pivot(target, pivot);
+            }
+            if let Some(py) = props.pivot_y {
+                let mut pivot = RectTransform::get_pivot(target);
+                pivot.y = py;
+                RectTransform::set_pivot(target, pivot);
+            }
+
+            if props.position_offset_x.is_some() || props.position_offset_y.is_some() {
+                let current_pos = RectTransform::get_anchoredPosition(target);
+                let (base_x, base_y) = if let Some(stored) = pos_map.get(&key) {
+                    let dx = (current_pos.x - stored.applied.x).abs();
+                    let dy = (current_pos.y - stored.applied.y).abs();
+                    if dx < 0.5 && dy < 0.5 { (stored.base.x, stored.base.y) } else { (current_pos.x, current_pos.y) }
+                } else {
+                    (current_pos.x, current_pos.y)
+                };
+
+                let new_x = base_x + props.position_offset_x.unwrap_or(0.0);
+                let new_y = base_y + props.position_offset_y.unwrap_or(0.0);
+
+                if debug {
+                    info!("[PositionOffset] APPLY transform={:#x} base=({}, {}) -> new=({}, {})",
+                        key, base_x, base_y, new_x, new_y);
+                }
+
+                pos_map.insert(key, StoredPosition {
+                    base: Vector2_t { x: base_x, y: base_y },
+                    applied: Vector2_t { x: new_x, y: new_y },
+                });
+                RectTransform::set_anchoredPosition(target, Vector2_t { x: new_x, y: new_y });
             }
         }
     }
 
-    if target.is_null() {
-        if debug { warn!("[SiblingOffset] NOT FOUND name={} under parent of {:#x}", sibling_name, anchor_transform as usize); }
-        return;
-    }
-
     unsafe {
-        let klass = (*target).klass();
-        if !il2cpp_class_is_assignable_from(RectTransform::class(), klass) {
-            if debug { warn!("[SiblingOffset] {} is not a RectTransform", sibling_name); }
-            return;
+        let text_type = crate::il2cpp::hook::UnityEngine_UI::Text::type_object();
+        if !text_type.is_null() {
+            let go = (*target).game_object();
+            if !go.is_null() {
+                let component = GameObject::GetComponent(go, text_type);
+                if !component.is_null() {
+                    use crate::il2cpp::hook::UnityEngine_UI::Text;
+                    if let Some(fs) = props.font_size { Text::set_fontSize(component, fs); }
+                    if let Some(ls) = props.line_spacing { Text::set_lineSpacing(component, ls); }
+                    if let Some(ho) = props.horizontal_overflow { Text::set_horizontalOverflow(component, ho); }
+                    if let Some(vo) = props.vertical_overflow { Text::set_verticalOverflow(component, vo); }
+                    if let Some(bf) = props.best_fit { Text::set_resizeTextForBestFit(component, bf); }
+                    if let Some(min) = props.min_size { Text::set_resizeTextMinSize(component, min); }
+                    if let Some(max) = props.max_size { Text::set_resizeTextMaxSize(component, max); }
+                    if let Some(ta) = props.text_anchor { Text::set_alignment(component, std::mem::transmute(ta)); }
+                    if let Some(ref text) = props.text_override { Text::set_text(component, text.to_il2cpp_string()); }
+                }
+            }
         }
     }
-
-    if !Object::IsNativeObjectAlive(target) {
-        if debug { warn!("[SiblingOffset] DEAD transform for sibling={}", sibling_name); }
-        return;
-    }
-
-    let current_pos = RectTransform::get_anchoredPosition(target);
-    let cur_x = current_pos.x;
-    let cur_y = current_pos.y;
-    let key = target as usize;
-
-    let (base_x, base_y) = if let Some(stored) = pos_map.get(&key) {
-        let dx = (cur_x - stored.applied.x).abs();
-        let dy = (cur_y - stored.applied.y).abs();
-        if dx < 0.5 && dy < 0.5 { (stored.base.x, stored.base.y) } else { (cur_x, cur_y) }
-    } else {
-        (cur_x, cur_y)
-    };
-
-    let new_x = base_x + offset_x;
-    let new_y = base_y + offset_y;
-
-    if debug {
-        info!("[SiblingOffset] APPLY sibling={} transform={:#x} current=({}, {}) base=({}, {}) -> new=({}, {})",
-            sibling_name, target as usize, cur_x, cur_y, base_x, base_y, new_x, new_y);
-    }
-
-    pos_map.insert(key, StoredPosition {
-        base: Vector2_t { x: base_x, y: base_y },
-        applied: Vector2_t { x: new_x, y: new_y },
-    });
-    RectTransform::set_anchoredPosition(target, Vector2_t { x: new_x, y: new_y });
 }
 
 pub fn drain_pending_offsets() {
@@ -388,62 +423,38 @@ pub fn drain_pending_offsets() {
     drop(pending);
 
     let config = Hachimi::instance().config.load();
-
     let mut pos_map = ORIGINAL_POSITIONS.lock().unwrap();
+    
     pos_map.retain(|_, stored| {
         (stored.base.x - stored.applied.x).abs() > 0.01 ||
         (stored.base.y - stored.applied.y).abs() > 0.01
     });
 
     for p in offsets {
-        if p.transform.is_null() { continue; }
-
-        if !Object::IsNativeObjectAlive(p.transform) {
-            if config.text_debug {
-                warn!("[PositionOffset] SKIP DEAD transform={:#x} offset=({}, {})",
-                    p.transform as usize, p.offset_x, p.offset_y);
+        for action in p.actions {
+            match action.target {
+                ActionTarget::Direct(transform) => {
+                    apply_common_overrides(transform, &action.properties, &mut pos_map, config.text_position_debug);
+                }
+                ActionTarget::Sibling { anchor, name } => {
+                    if config.text_position_debug {
+                        info!("[SiblingOffset] DRAIN SIBLING anchor={:#x} name={} searching for={}", anchor as usize, get_hierarchy_path(anchor), name);
+                    }
+                    for sib_name in name.split(',').map(|s| s.trim()) {
+                        if sib_name.is_empty() { continue; }
+                        if let Some(sibling) = find_sibling_by_name(anchor, sib_name) {
+                            if config.text_position_debug {
+                                info!("[SiblingOffset] FOUND sibling={} transform={:#x}", sib_name, sibling as usize);
+                            }
+                            apply_common_overrides(sibling, &action.properties, &mut pos_map, config.text_position_debug);
+                        } else if config.text_position_debug {
+                            let parent = Transform::get_parent(anchor);
+                            let parent_name = if parent.is_null() { "null".to_string() } else { get_hierarchy_path(parent) };
+                            warn!("[SiblingOffset] NOT FOUND name={} under parent={} of anchor {:#x}", sib_name, parent_name, anchor as usize);
+                        }
+                    }
+                }
             }
-            pos_map.remove(&(p.transform as usize));
-            continue;
-        }
-
-        // handle sibling redirect
-        if let Some(ref sib_name) = p.sibling_name {
-            apply_sibling_offset(p.transform, sib_name, p.sibling_offset_x, p.sibling_offset_y, &mut pos_map, config.text_debug);
-        }
-
-        // still apply self-offset if provided
-        if p.offset_x != 0.0 || p.offset_y != 0.0 {
-            let current_pos = RectTransform::get_anchoredPosition(p.transform);
-            let cur_x = current_pos.x;
-            let cur_y = current_pos.y;
-            let key = p.transform as usize;
-
-            let (base_x, base_y) = if let Some(stored) = pos_map.get(&key) {
-                let dx = (cur_x - stored.applied.x).abs();
-                let dy = (cur_y - stored.applied.y).abs();
-                if dx < 0.5 && dy < 0.5 { (stored.base.x, stored.base.y) } else { (cur_x, cur_y) }
-            } else {
-                (cur_x, cur_y)
-            };
-
-            let new_x = base_x + p.offset_x;
-            let new_y = base_y + p.offset_y;
-
-            if config.text_debug {
-                let name = unsafe {
-                    let name_ptr = Object::get_name(p.transform);
-                    if !name_ptr.is_null() { (*name_ptr).as_utf16str().to_string() } else { "<null>".to_string() }
-                };
-                info!("[PositionOffset] APPLY transform={:#x} name={} current=({}, {}) base=({}, {}) -> new=({}, {})",
-                    p.transform as usize, name, cur_x, cur_y, base_x, base_y, new_x, new_y);
-            }
-
-            pos_map.insert(key, StoredPosition {
-                base: Vector2_t { x: base_x, y: base_y },
-                applied: Vector2_t { x: new_x, y: new_y },
-            });
-            RectTransform::set_anchoredPosition(p.transform, Vector2_t { x: new_x, y: new_y });
         }
     }
 }
@@ -453,29 +464,12 @@ fn get_hierarchy_path_with_fallback(context: *mut Il2CppObject, fallback: *mut I
     if path == "None" || path == "Unknown" { get_hierarchy_path(fallback) } else { path }
 }
 
-fn get_transform_safe(obj: *mut Il2CppObject) -> *mut Il2CppObject {
-    if obj.is_null() { return null_mut(); }
-    unsafe {
-        let klass = (*obj).klass();
-        if il2cpp_class_is_assignable_from(Component::class(), klass) {
-            Component::get_transform(obj)
-        } else if il2cpp_class_is_assignable_from(GameObject::class(), klass) {
-            GameObject::get_transform(obj)
-        } else if il2cpp_class_is_assignable_from(Transform::class(), klass) {
-            obj
-        } else {
-            null_mut()
-        }
-    }
-}
-
 unsafe fn dump_sibling_subtree(sibling: *mut Il2CppObject, sibling_index: usize, parent_depth: usize) {
     if sibling.is_null() { return; }
     let klass = (*sibling).klass();
     if !il2cpp_class_is_assignable_from(RectTransform::class(), klass) { return; }
 
-    let name_ptr = Object::get_name(sibling);
-    let name = if !name_ptr.is_null() { (*name_ptr).as_utf16str().to_string() } else { "<unnamed>".to_string() };
+    let name = (*sibling).name();
 
     let size = RectTransform::get_sizeDelta(sibling);
     let pos = RectTransform::get_anchoredPosition(sibling);
@@ -489,16 +483,13 @@ unsafe fn dump_sibling_subtree(sibling: *mut Il2CppObject, sibling_index: usize,
         sibling_index, parent_depth, name, size, pos, anchor_min, anchor_max, pivot, scale
     );
 
-    // one level deeper into the sibling's children
     let child_count = Transform::get_childCount(sibling);
     for i in 0..child_count {
         let child = Transform::GetChild(sibling, i);
         if child.is_null() { continue; }
-        let cklass = (*child).klass();
-        if !il2cpp_class_is_assignable_from(RectTransform::class(), cklass) { continue; }
+        if !il2cpp_class_is_assignable_from(RectTransform::class(), (*child).klass()) { continue; }
 
-        let cname_ptr = Object::get_name(child);
-        let cname = if !cname_ptr.is_null() { (*cname_ptr).as_utf16str().to_string() } else { "<unnamed>".to_string() };
+        let cname = (*child).name();
         let csize = RectTransform::get_sizeDelta(child);
         let cpos = RectTransform::get_anchoredPosition(child);
         info!(
@@ -515,11 +506,10 @@ fn dump_properties(obj: *mut Il2CppObject, path: &str, settings: &TextGeneration
         settings.resizeTextForBestFit, settings.resizeTextMinSize, settings.resizeTextMaxSize,
         settings.generationExtents, settings.pivot, settings.scaleFactor);
 
-    let rect_transform_obj = get_transform_safe(obj);
+    let rect_transform_obj = unsafe { (*obj).transform() };
     if !rect_transform_obj.is_null() {
         unsafe {
-            let klass = (*rect_transform_obj).klass();
-            if il2cpp_class_is_assignable_from(crate::il2cpp::hook::UnityEngine_CoreModule::RectTransform::class(), klass) {
+            if il2cpp_class_is_assignable_from(RectTransform::class(), (*rect_transform_obj).klass()) {
                 use crate::il2cpp::hook::UnityEngine_CoreModule::{RectTransform, Transform};
 
                 let size = RectTransform::get_sizeDelta(rect_transform_obj);
@@ -530,12 +520,7 @@ fn dump_properties(obj: *mut Il2CppObject, path: &str, settings: &TextGeneration
                 let mut depth = 0;
 
                 while !curr.is_null() && depth < 6 {
-                    let name_ptr = Object::get_name(curr);
-                    let name = if !name_ptr.is_null() {
-                        (*name_ptr).as_utf16str().to_string()
-                    } else {
-                        "<unnamed>".to_string()
-                    };
+                    let name = (*curr).name();
 
                     let size = RectTransform::get_sizeDelta(curr);
                     let pos = RectTransform::get_anchoredPosition(curr);
@@ -571,48 +556,16 @@ fn dump_properties(obj: *mut Il2CppObject, path: &str, settings: &TextGeneration
 }
 
 fn get_hierarchy_path(obj: *mut Il2CppObject) -> String {
-    if obj.is_null() {
-        return "None".to_owned();
-    }
-
+    if obj.is_null() { return "None".to_owned(); }
     let mut path = Vec::new();
-    let transform = get_transform_safe(obj);
-
-    if !transform.is_null() {
-        unsafe {
-            let klass = (*obj).klass();
-            if il2cpp_class_is_assignable_from(Object::class(), klass) {
-                let name_ptr = Object::get_name(obj);
-                if !name_ptr.is_null() {
-                    path.push((*name_ptr).as_utf16str().to_string());
-                }
-            } else {
-                path.push(CStr::from_ptr((*klass).name).to_string_lossy().into_owned());
-            }
-
-            let mut curr_transform = transform;
-            loop {
-                let parent = Transform::get_parent(curr_transform);
-                if parent.is_null() { break; }
-                
-                let parent_name_ptr = Object::get_name(parent);
-                if !parent_name_ptr.is_null() {
-                    path.push((*parent_name_ptr).as_utf16str().to_string());
-                }
-                curr_transform = parent;
-            }
-        }
-    } else {
-        unsafe {
-            let klass = (*obj).klass();
-            if il2cpp_class_is_assignable_from(Object::class(), klass) {
-                let name_ptr = Object::get_name(obj);
-                if !name_ptr.is_null() {
-                    path.push((*name_ptr).as_utf16str().to_string());
-                }
-            } else {
-                path.push(CStr::from_ptr((*klass).name).to_string_lossy().into_owned());
-            }
+    unsafe {
+        path.push((*obj).name());
+        let mut curr = (*obj).transform();
+        while !curr.is_null() {
+            let parent = Transform::get_parent(curr);
+            if parent.is_null() { break; }
+            path.push((*parent).name());
+            curr = parent;
         }
     }
 
