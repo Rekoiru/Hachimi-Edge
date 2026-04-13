@@ -139,7 +139,7 @@ pub fn init(umamusume: *const Il2CppImage) {
     find_nested_class_or_return!(PartsSingleModeSkillListItem, Info);
 
     if Hachimi::instance().game.region == Region::Japan {
-        let UpdateItem_addr = get_method_addr(PartsSingleModeSkillListItem, c"UpdateItem", 3);
+        let UpdateItem_addr = get_method_addr(PartsSingleModeSkillListItem, c"UpdateItem", 4);
         new_hook!(UpdateItem_addr, UpdateItemJp);
     }
     else {

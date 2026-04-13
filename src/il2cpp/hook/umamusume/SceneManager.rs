@@ -51,7 +51,7 @@ pub fn init(umamusume: *const Il2CppImage) {
     get_class_or_return!(umamusume, Gallop, SceneManager);
 
     if Hachimi::instance().game.region == Region::Japan {
-        let ChangeView_addr = get_method_addr(SceneManager, c"ChangeView", 6);
+        let ChangeView_addr = get_method_addr(SceneManager, c"ChangeView", 7);
         new_hook!(ChangeView_addr, ChangeViewJp);
     }
     else {
