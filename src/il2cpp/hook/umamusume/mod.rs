@@ -67,6 +67,7 @@ mod PartsGachaButtonController;
 mod PartsHorizontalTextSet;
 mod GachaExecutableUnit;
 mod StoryChoiceButton;
+pub mod PartsSingleModeStoryEventTitle;
 pub mod TweenAnimationTimelineComponent;
 pub mod TweenAnimationTimelineData;
 pub mod TweenAnimationTimelineSheetData;
@@ -148,6 +149,7 @@ pub fn init() {
     PartsHorizontalTextSet::init(image);
     GachaExecutableUnit::init(image);
     StoryChoiceButton::init(image);
+    PartsSingleModeStoryEventTitle::init(image);
     TweenAnimationTimelineComponent::init(image);
     TweenAnimationTimelineData::init(image);
     TweenAnimationTimelineSheetData::init(image);

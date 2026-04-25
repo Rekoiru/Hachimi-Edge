@@ -12,8 +12,8 @@ use crate::{
 };
 
 use super::{
-    AnMeshInfoParameterGroup, AnMeshParameter, AnMeshParameterGroup, AnMotionParameter, AnMotionParameterGroup,
-    AnObjectParameterBase, AnRootParameter, AnTextParameter
+    AnKeyParameter, AnMeshInfoParameterGroup, AnMeshParameter, AnMeshParameterGroup, AnMotionParameter,
+    AnMotionParameterGroup, AnObjectParameterBase, AnRootParameter, AnTextParameter
 };
 
 static mut TYPE_OBJECT: *mut Il2CppObject = 0 as _;
@@ -55,7 +55,14 @@ struct AnMotionParameterData {
 #[derive(Deserialize)]
 struct AnObjectParameterBaseData {
     position_offset: Option<Vector3_t>,
-    scale: Option<Vector3_t>
+    scale: Option<Vector3_t>,
+    rotate: Option<Vector3_t>,
+    #[serde(default)]
+    scale_key: Option<Vector3_t>,
+    #[serde(default)]
+    position_offset_key: Option<Vector3_t>,
+    #[serde(default)]
+    rotate_key: Option<Vector3_t>
 }
 
 #[derive(Deserialize)]
@@ -83,6 +90,29 @@ pub fn on_LoadAsset(bundle: *mut Il2CppObject, this: *mut Il2CppObject, name: &U
     }
 
     patch_asset(this, asset_info.data.as_ref());
+}
+
+fn apply_key_multiply(
+    param: *mut Il2CppObject,
+    get_key_param_list: fn(*mut Il2CppObject) -> *mut Il2CppObject,
+    multiply: &Vector3_t
+) {
+    let Some(key_param_list) = IList::new(get_key_param_list(param)) else { return; };
+
+    let factors = [multiply.x, multiply.y, multiply.z];
+    for (axis, factor) in factors.iter().enumerate() {
+        if *factor == 1.0 { continue; }
+
+        let Some(key_param) = key_param_list.get(axis as i32) else { continue; };
+        let Some(key_list) = IList::<Vector2_t>::new(AnKeyParameter::get__keyList(key_param)) else { continue; };
+
+        for i in 0..key_list.count() {
+            if let Some(mut key) = key_list.get(i) {
+                key.y *= factor;
+                key_list.set(i, key);
+            }
+        }
+    }
 }
 
 pub fn patch_asset(this: *mut Il2CppObject, data_opt: Option<&AnRootData>) {
@@ -174,6 +204,22 @@ pub fn patch_asset(this: *mut Il2CppObject, data_opt: Option<&AnRootData>) {
                     if let Some(scale) = &text_param_data.base.scale {
                         AnObjectParameterBase::set__scale(text_param, scale);
                     }
+
+                    if let Some(rotate) = &text_param_data.base.rotate {
+                        AnObjectParameterBase::set__rotate(text_param, rotate);
+                    }
+
+                    if let Some(multiply) = &text_param_data.base.scale_key {
+                        apply_key_multiply(text_param, AnObjectParameterBase::get__scaleKeyParamList, multiply);
+                    }
+
+                    if let Some(multiply) = &text_param_data.base.position_offset_key {
+                        apply_key_multiply(text_param, AnObjectParameterBase::get__positionOffsetKeyParamList, multiply);
+                    }
+
+                    if let Some(multiply) = &text_param_data.base.rotate_key {
+                        apply_key_multiply(text_param, AnObjectParameterBase::get__rotateKeyParamList, multiply);
+                    }
                 }
             }
 
@@ -195,6 +241,22 @@ pub fn patch_asset(this: *mut Il2CppObject, data_opt: Option<&AnRootData>) {
                                                                         
                     if let Some(scale) = &plane_param_data.base.scale {
                         AnObjectParameterBase::set__scale(plane_param, scale);
+                    }
+
+                    if let Some(rotate) = &plane_param_data.base.rotate {
+                        AnObjectParameterBase::set__rotate(plane_param, rotate);
+                    }
+
+                    if let Some(multiply) = &plane_param_data.base.scale_key {
+                        apply_key_multiply(plane_param, AnObjectParameterBase::get__scaleKeyParamList, multiply);
+                    }
+
+                    if let Some(multiply) = &plane_param_data.base.position_offset_key {
+                        apply_key_multiply(plane_param, AnObjectParameterBase::get__positionOffsetKeyParamList, multiply);
+                    }
+
+                    if let Some(multiply) = &plane_param_data.base.rotate_key {
+                        apply_key_multiply(plane_param, AnObjectParameterBase::get__rotateKeyParamList, multiply);
                     }
                 }
             }
