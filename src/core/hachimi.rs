@@ -792,6 +792,7 @@ pub struct LocalizedDataConfig {
     pub text_frame_line_spacing_multiplier: Option<f32>,
     pub text_frame_font_size_multiplier: Option<f32>,
     pub story_choice_multi_line: Option<UITextConfig>,
+    pub story_event_title: Option<UITextConfig>,
     pub skill_list_item_desc_font_size_multiplier: Option<f32>,
     #[serde(default)]
     pub text_common_allow_overflow: bool,
