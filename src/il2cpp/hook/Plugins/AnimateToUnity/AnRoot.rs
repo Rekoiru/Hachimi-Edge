@@ -115,6 +115,29 @@ fn apply_key_multiply(
     }
 }
 
+fn apply_key_add(
+    param: *mut Il2CppObject,
+    get_key_param_list: fn(*mut Il2CppObject) -> *mut Il2CppObject,
+    add: &Vector3_t
+) {
+    let Some(key_param_list) = IList::new(get_key_param_list(param)) else { return; };
+
+    let offsets = [add.x, add.y, add.z];
+    for (axis, offset) in offsets.iter().enumerate() {
+        if *offset == 0.0 { continue; }
+
+        let Some(key_param) = key_param_list.get(axis as i32) else { continue; };
+        let Some(key_list) = IList::<Vector2_t>::new(AnKeyParameter::get__keyList(key_param)) else { continue; };
+
+        for i in 0..key_list.count() {
+            if let Some(mut key) = key_list.get(i) {
+                key.y += offset;
+                key_list.set(i, key);
+            }
+        }
+    }
+}
+
 pub fn patch_asset(this: *mut Il2CppObject, data_opt: Option<&AnRootData>) {
     /*** Texture set replacement ***/
     let param_group = get__meshParameterGroup(this);
@@ -213,12 +236,12 @@ pub fn patch_asset(this: *mut Il2CppObject, data_opt: Option<&AnRootData>) {
                         apply_key_multiply(text_param, AnObjectParameterBase::get__scaleKeyParamList, multiply);
                     }
 
-                    if let Some(multiply) = &text_param_data.base.position_offset_key {
-                        apply_key_multiply(text_param, AnObjectParameterBase::get__positionOffsetKeyParamList, multiply);
+                    if let Some(add) = &text_param_data.base.position_offset_key {
+                        apply_key_add(text_param, AnObjectParameterBase::get__positionOffsetKeyParamList, add);
                     }
 
-                    if let Some(multiply) = &text_param_data.base.rotate_key {
-                        apply_key_multiply(text_param, AnObjectParameterBase::get__rotateKeyParamList, multiply);
+                    if let Some(add) = &text_param_data.base.rotate_key {
+                        apply_key_add(text_param, AnObjectParameterBase::get__rotateKeyParamList, add);
                     }
                 }
             }
@@ -251,12 +274,12 @@ pub fn patch_asset(this: *mut Il2CppObject, data_opt: Option<&AnRootData>) {
                         apply_key_multiply(plane_param, AnObjectParameterBase::get__scaleKeyParamList, multiply);
                     }
 
-                    if let Some(multiply) = &plane_param_data.base.position_offset_key {
-                        apply_key_multiply(plane_param, AnObjectParameterBase::get__positionOffsetKeyParamList, multiply);
+                    if let Some(add) = &plane_param_data.base.position_offset_key {
+                        apply_key_add(plane_param, AnObjectParameterBase::get__positionOffsetKeyParamList, add);
                     }
 
-                    if let Some(multiply) = &plane_param_data.base.rotate_key {
-                        apply_key_multiply(plane_param, AnObjectParameterBase::get__rotateKeyParamList, multiply);
+                    if let Some(add) = &plane_param_data.base.rotate_key {
+                        apply_key_add(plane_param, AnObjectParameterBase::get__rotateKeyParamList, add);
                     }
                 }
             }
