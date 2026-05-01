@@ -11,11 +11,17 @@ pub fn get__planeParamList(this: *mut Il2CppObject) -> *mut Il2CppObject {
     get_field_object_value(this, unsafe { _PLANEPARAMLIST_FIELD })
 }
 
+static mut _OBJECTPARAMLIST_FIELD: *mut FieldInfo = 0 as _;
+pub fn get__objectParamList(this: *mut Il2CppObject) -> *mut Il2CppObject {
+    get_field_object_value(this, unsafe { _OBJECTPARAMLIST_FIELD })
+}
+
 pub fn init(Plugins: *const Il2CppImage) {
     get_class_or_return!(Plugins, AnimateToUnity, AnMotionParameter);
 
     unsafe {
         _TEXTPARAMLIST_FIELD = get_field_from_name(AnMotionParameter, c"_textParamList");
         _PLANEPARAMLIST_FIELD = get_field_from_name(AnMotionParameter, c"_planeParamList");
+        _OBJECTPARAMLIST_FIELD = get_field_from_name(AnMotionParameter, c"_objectParamList");
     }
 }

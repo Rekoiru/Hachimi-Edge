@@ -49,7 +49,9 @@ struct AnMotionParameterData {
     #[serde(default)]
     text_param_list: FnvHashMap<i32, AnTextParameterData>,
     #[serde(default)]
-    plane_param_list: FnvHashMap<i32, AnPlaneParameterData>
+    plane_param_list: FnvHashMap<i32, AnPlaneParameterData>,
+    #[serde(default)]
+    object_param_list: FnvHashMap<i32, AnObjectParameterData>
 }
 
 #[derive(Deserialize)]
@@ -75,6 +77,12 @@ struct AnTextParameterData {
 
 #[derive(Deserialize)]
 struct AnPlaneParameterData {
+    #[serde(flatten)]
+    base: AnObjectParameterBaseData
+}
+
+#[derive(Deserialize)]
+struct AnObjectParameterData {
     #[serde(flatten)]
     base: AnObjectParameterBaseData
 }
@@ -195,7 +203,7 @@ pub fn patch_asset(this: *mut Il2CppObject, data_opt: Option<&AnRootData>) {
 
         for (i, motion_param_data) in data.motion_parameter_list.iter() {
             // quick escape!!!11
-            if motion_param_data.text_param_list.is_empty() && motion_param_data.plane_param_list.is_empty() {
+            if motion_param_data.text_param_list.is_empty() && motion_param_data.plane_param_list.is_empty() && motion_param_data.object_param_list.is_empty() {
                 continue;
             }
 
@@ -280,6 +288,44 @@ pub fn patch_asset(this: *mut Il2CppObject, data_opt: Option<&AnRootData>) {
 
                     if let Some(add) = &plane_param_data.base.rotate_key {
                         apply_key_add(plane_param, AnObjectParameterBase::get__rotateKeyParamList, add);
+                    }
+                }
+            }
+
+            if !motion_param_data.object_param_list.is_empty() {
+                let Some(object_param_list) = IList::new(AnMotionParameter::get__objectParamList(motion_param)) else {
+                    warn!("Failed to get object_param_list for motion param {}", *i);
+                    continue;
+                };
+
+                for (j, object_param_data) in motion_param_data.object_param_list.iter() {
+                    let Some(object_param) = object_param_list.get(*j) else {
+                        warn!("object param {} of motion param {} out of range (max {})", *j, *i, object_param_list.count());
+                        continue;
+                    };
+
+                    if let Some(position_offset) = &object_param_data.base.position_offset {
+                        AnObjectParameterBase::set__positionOffset(object_param, position_offset);
+                    }
+                                                                        
+                    if let Some(scale) = &object_param_data.base.scale {
+                        AnObjectParameterBase::set__scale(object_param, scale);
+                    }
+
+                    if let Some(rotate) = &object_param_data.base.rotate {
+                        AnObjectParameterBase::set__rotate(object_param, rotate);
+                    }
+
+                    if let Some(multiply) = &object_param_data.base.scale_key {
+                        apply_key_multiply(object_param, AnObjectParameterBase::get__scaleKeyParamList, multiply);
+                    }
+
+                    if let Some(add) = &object_param_data.base.position_offset_key {
+                        apply_key_add(object_param, AnObjectParameterBase::get__positionOffsetKeyParamList, add);
+                    }
+
+                    if let Some(add) = &object_param_data.base.rotate_key {
+                        apply_key_add(object_param, AnObjectParameterBase::get__rotateKeyParamList, add);
                     }
                 }
             }
