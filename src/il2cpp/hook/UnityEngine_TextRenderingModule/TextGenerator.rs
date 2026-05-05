@@ -95,6 +95,7 @@ extern "C" fn PopulateWithErrors(
     let mut has_template: bool = false;
     let ld_str: String;
 
+    // Check if the hashed dict has a match.
     let hashed_text = hashed_dict.is_empty().not()
         .then(|| hashed_dict.get(&unsafe { (*str_).hash() }))
         .flatten();
@@ -583,6 +584,7 @@ struct TemplateContext<'a> {
 
 impl<'a> template::Context for TemplateContext<'a> {
     fn on_filter_eval(&mut self, name: &str, args: &[template::Token]) -> Option<String> {
+        // Extra filters to modify the text generation settings
         match name {
             "nb" => {
                 self.settings.horizontalOverflow = TextOverflow_Allow;
@@ -590,6 +592,11 @@ impl<'a> template::Context for TemplateContext<'a> {
             }
 
             "anchor" => {
+                // Anchor values:
+                // 1  2  3
+                // 4  5  6
+                // 7  8  9
+                // Example: $(anchor 6) = middle right
                 let value = args.get(0)?;
                 let template::Token::NumberLit(anchor_num) = *value else {
                     return None;
@@ -602,6 +609,7 @@ impl<'a> template::Context for TemplateContext<'a> {
             }
 
             "scale" => {
+                // Example: $(scale 80) = scale font size to 80%
                 let value = args.get(0)?;
                 let template::Token::NumberLit(percentage) = value else {
                     return None;
@@ -610,6 +618,7 @@ impl<'a> template::Context for TemplateContext<'a> {
             }
 
             "ho" => {
+                // $(ho 0) or $(ho 1)
                 let value = args.get(0)?;
                 let template::Token::NumberLit(overflow_num) = *value else {
                     return None;
@@ -622,6 +631,7 @@ impl<'a> template::Context for TemplateContext<'a> {
             }
 
             "vo" => {
+                // $(vo 0) or $(vo 1)
                 let value = args.get(0)?;
                 let template::Token::NumberLit(overflow_num) = *value else {
                     return None;
@@ -676,6 +686,7 @@ impl<'a> template::Context for TemplateContext<'a> {
     }
 }
 
+// Context that ignores TextGenerator filters
 pub struct IgnoreTGFiltersContext();
 
 impl template::Context for IgnoreTGFiltersContext {

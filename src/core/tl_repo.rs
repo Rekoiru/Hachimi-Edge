@@ -8,7 +8,7 @@ use size::Size;
 use thread_priority::{ThreadBuilderExt, ThreadPriority};
 
 use crate::core::game::Region;
-use super::{gui::SimpleYesNoDialog, hachimi::LocalizedData, http::{self, ureq_config, AsyncRequest}, utils, Error, Gui, Hachimi};
+use super::{gui::{NotificationGuard, SimpleYesNoDialog}, hachimi::LocalizedData, http::{self, ureq_config, AsyncRequest}, utils, Error, Gui, Hachimi};
 use once_cell::sync::Lazy;
 
 #[derive(Deserialize)]
@@ -77,12 +77,12 @@ impl RepoFile {
         let Ok(mut file) = fs::File::open(full_path) else { return false };
         let mut hasher = blake3::Hasher::new();
         let mut buffer = vec![0u8; 8192];
-        
+
         while let Ok(n) = file.read(&mut buffer) {
             if n == 0 { break; }
             hasher.update(&buffer[..n]);
         }
-        
+
         hasher.finalize().to_hex().as_str() == self.hash
     }
 }
@@ -219,9 +219,12 @@ impl Updater {
         };
         let ld_dir_path = config.localized_data_dir.as_ref().map(|p| hachimi.get_data_path(p));
 
-        if let Some(mutex) = Gui::instance() {
-            mutex.lock().unwrap().show_notification(&t!("notification.checking_for_tl_updates"));
-        }
+        let checking_notif_id = if let Some(mutex) = Gui::instance() {
+            Some(mutex.lock().unwrap().show_persistent_notification(&t!("notification.checking_for_tl_updates")))
+        } else {
+            None
+        };
+        let _guard = checking_notif_id.map(NotificationGuard);
 
         let index: RepoIndex = http::get_json(index_url)?;
 
@@ -336,7 +339,7 @@ impl Updater {
                 // Determine the dialog message based on download strategy
                 let dialog_message = if will_use_zip && update_size > 0 {
                     let size_ratio = total_size as f64 / update_size.max(1) as f64;
-                    
+
                     if size_ratio >= ZIP_SIZE_WARNING_RATIO {
                         // Warn user about larger ZIP download
                         debug!(
@@ -345,7 +348,7 @@ impl Updater {
                             total_size / (1024 * 1024),
                             size_ratio
                         );
-                        
+
                         t!(
                             "tl_update_dialog.content_zip_warning",
                             changed_size = Size::from_bytes(update_size),
@@ -373,7 +376,7 @@ impl Updater {
         else if let Some(mutex) = Gui::instance() {
             mutex.lock().unwrap().show_notification(&t!("notification.no_tl_updates"));
         }
-        
+
         Ok(())
     }
 
@@ -429,7 +432,7 @@ impl Updater {
         else {
             self.clone().download_incremental(&update_info, &localized_data_dir, cached_files.clone())
         }?;
-        
+
         // Modify the config if needed
         if hachimi.config.load().localized_data_dir.is_none() {
             let mut config = (**hachimi.config.load()).clone();
@@ -503,7 +506,7 @@ impl Updater {
 
                     while let Ok(repo_file) = receiver_clone.lock().unwrap().recv() {
                         if stop_signal_clone.load(atomic::Ordering::Relaxed) { break; }
-                        
+
                         let file_path = repo_file.get_fs_path(&localized_data_dir_clone);
                         let url = utils::concat_unix_path(&base_url_clone, &repo_file.path);
 
@@ -513,7 +516,7 @@ impl Updater {
                             }
                             let mut file = fs::File::create(&file_path)?;
                             let res = job.agent.get(&url).call()?;
-                            
+
                             http::download_file_buffered(res, &mut file, &mut job.buffer, |bytes| {
                                 job.hasher.update(bytes);
                                 let prev_size = current_bytes_clone.fetch_add(bytes.len(), atomic::Ordering::SeqCst);
@@ -673,12 +676,12 @@ impl Updater {
                                     continue;
                                 }
                             };
-                            
+
                             let repo_file = match files_to_extract_clone.get(zip_entry.name()) {
                                 Some(file) => file.clone(),
                                 None => continue,
                             };
-                        
+
                             let path = repo_file.get_fs_path(&localized_data_dir_clone);
                             if let Some(parent) = path.parent() {
                                 if fs::create_dir_all(parent).is_err() {
@@ -686,7 +689,7 @@ impl Updater {
                                     continue;
                                 }
                             }
-                        
+
                             let mut out_file = match fs::File::create(&path) {
                                 Ok(file) => file,
                                 Err(_) => {
@@ -715,7 +718,7 @@ impl Updater {
                                     }
                                 }
                             }
-                        
+
                             let hash = hasher.finalize().to_hex().to_string();
                             if hash != repo_file.hash {
                                 let path_str = path.to_str().unwrap_or("").to_string();
@@ -723,7 +726,7 @@ impl Updater {
                                 stop_signal_clone.store(true, atomic::Ordering::Relaxed);
                                 return;
                             }
-                            
+
                             cached_files_clone.lock().unwrap().insert(repo_file.path.clone(), hash);
                             hasher.reset();
                         }
@@ -740,7 +743,7 @@ impl Updater {
             for handle in handles {
                 handle.join().unwrap();
             }
-            
+
             if let Some(err) = fatal_error.lock().unwrap().take() { return Err(err); }
             error_count = non_fatal_error_count.load(atomic::Ordering::Relaxed);
         }

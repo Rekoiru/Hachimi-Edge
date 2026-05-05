@@ -109,6 +109,7 @@ pub struct Gui {
     pub update_progress_visible: bool,
 
     notifications: Vec<Notification>,
+    next_notification_id: u32,
     windows: Vec<BoxedWindow>
 }
 
@@ -520,6 +521,7 @@ impl Gui {
             update_progress_visible: false,
 
             notifications: Vec::new(),
+            next_notification_id: 0,
             windows
         };
 
@@ -552,18 +554,17 @@ impl Gui {
         // lets adjust the landscape scaling better
         let is_landscape = width > height;
         let main_axis_size = if is_landscape { height } else { width.min(height) };
-        let orientation_scale: f32;
-        
-        #[cfg(not(target_os = "windows"))]
-        {
-            orientation_scale = 1.0;
-        }
-        
-        #[cfg(target_os = "windows")]
-        {
-            let orientation_ratio = if is_landscape { height as f32 / width as f32 } else { 1.0 };
-            orientation_scale = if is_landscape { orientation_ratio * Hachimi::instance().config.load().windows.gui_landscape_ratio } else { 1.0 };
-        }
+
+        let orientation_scale = {
+            #[cfg(target_os = "windows")]
+            {
+                let orientation_ratio = if is_landscape { height as f32 / width as f32 } else { 1.0 };
+                if is_landscape { orientation_ratio * Hachimi::instance().config.load().windows.gui_landscape_ratio } else { 1.0 }
+            }
+
+            #[cfg(target_os = "android")]
+            { 1.0 }
+        };
 
         let pixels_per_point = main_axis_size as f32 * PIXELS_PER_POINT_RATIO * orientation_scale;
         self.context.set_pixels_per_point(pixels_per_point);
@@ -1141,6 +1142,32 @@ impl Gui {
         changed
     }
 
+    fn run_combo_string(
+        ui: &mut egui::Ui,
+        id_child: impl std::hash::Hash,
+        value: &mut String,
+        choices: &[(String, &str)]
+    ) -> bool {
+        let mut selected = "Unknown";
+        for choice in choices.iter() {
+            if *value == choice.0 {
+                selected = choice.1;
+            }
+        }
+
+        let mut changed = false;
+        egui::ComboBox::new(ui.id().with(id_child), "")
+        .wrap_mode(egui::TextWrapMode::Wrap)
+        .selected_text(selected)
+        .show_ui(ui, |ui| {
+            for choice in choices.iter() {
+                changed |= ui.selectable_value(value, choice.0.clone(), choice.1).changed();
+            }
+        });
+
+        changed
+    }
+
     pub fn run_combo_menu<T: PartialEq + Copy>(
         ui: &mut egui::Ui,
         id_salt: impl std::hash::Hash,
@@ -1343,6 +1370,15 @@ impl Gui {
         IS_CONSUMING_INPUT.load(atomic::Ordering::Relaxed)
     }
 
+    pub fn set_consuming_input(&mut self, val: bool) {
+        if !self.windows.is_empty() && !val {
+            self.windows.clear();
+        }
+
+        self.menu_visible = val;
+        IS_CONSUMING_INPUT.store(val, atomic::Ordering::Relaxed);
+    }
+
     pub fn toggle_menu(&mut self) {
         self.show_menu = !self.show_menu;
         // Menu is always visible on show, but not immediately invisible on hide
@@ -1355,7 +1391,22 @@ impl Gui {
     }
 
     pub fn show_notification(&mut self, content: &str) {
-        self.notifications.push(Notification::new(content.to_owned()));
+        self.add_notification(content, false);
+    }
+
+    pub fn show_persistent_notification(&mut self, content: &str) -> u32 {
+        self.add_notification(content, true)
+    }
+
+    fn add_notification(&mut self, content: &str, persistent: bool) -> u32 {
+        let id = self.next_notification_id;
+        self.notifications.push(Notification::new(id, content.to_owned(), persistent));        
+        self.next_notification_id = self.next_notification_id.wrapping_add(1);
+        id
+    }
+
+    pub fn close_notification(&mut self, id: u32) {
+        self.notifications.retain(|n| n.id != id);
     }
 
     pub fn show_window(&mut self, window: BoxedWindow) {
@@ -1427,32 +1478,51 @@ fn random_id() -> egui::Id {
     egui::Id::new(egui::epaint::ahash::RandomState::new().hash_one(0))
 }
 
+pub struct NotificationGuard(pub u32); 
+
+impl Drop for NotificationGuard {
+    fn drop(&mut self) {
+        if let Some(mutex) = Gui::instance() {
+            if let Ok(mut gui) = mutex.lock() {
+                gui.close_notification(self.0);
+            }
+        }
+    }
+}
+
 struct Notification {
+    id: u32,
     content: String,
     config: hachimi::Config,
     tween: TweenInOutWithDelay,
-    id: egui::Id
+    egui_id: egui::Id
 }
 
 impl Notification {
-    fn new(content: String) -> Notification {
+    fn new(id: u32, content: String, persistent: bool) -> Notification {
         Notification {
+            id,
             content,
             config: (**Hachimi::instance().config.load()).clone(),
-            tween: TweenInOutWithDelay::new(0.2, 3.0, Easing::OutQuad),
-            id: random_id()
+            tween: TweenInOutWithDelay::new(
+                0.2, 
+                if persistent { f32::MAX } else { 3.0 }, 
+                Easing::OutQuad
+            ),
+            egui_id: random_id()
         }
     }
 
     const WIDTH: f32 = 150.0;
+
     fn run(&mut self, ctx: &egui::Context, offset: &mut f32) -> bool {
         let scale = get_scale(ctx);
 
-        let Some(tween_val) = self.tween.run(ctx, self.id.with("tween")) else {
+        let Some(tween_val) = self.tween.run(ctx, self.egui_id.with("tween")) else {
             return false;
         };
 
-        let frame_rect = egui::Area::new(self.id)
+        let frame_rect = egui::Area::new(self.egui_id)
         .anchor(
             egui::Align2::RIGHT_BOTTOM,
             egui::Vec2::new(
@@ -1745,22 +1815,25 @@ struct ConfigEditor {
     last_ptr_config: usize,
     config: hachimi::Config,
     id: egui::Id,
-    current_tab: ConfigEditorTab
+    current_tab: ConfigEditorTab,
+    localized_data_dirs: Vec<String>
 }
 
-#[derive(Eq, PartialEq, Clone, Copy)]
+#[derive(Eq, PartialEq, Clone, Copy, Hash)]
 enum ConfigEditorTab {
     General,
     Graphics,
-    Gameplay
+    Gameplay,
+    Advanced
 }
 
 impl ConfigEditorTab {
-    fn display_list() -> [(ConfigEditorTab, Cow<'static, str>); 3] {
+    fn display_list() -> [(ConfigEditorTab, Cow<'static, str>); 4] {
         [
             (ConfigEditorTab::General, t!("config_editor.general_tab")),
             (ConfigEditorTab::Graphics, t!("config_editor.graphics_tab")),
-            (ConfigEditorTab::Gameplay, t!("config_editor.gameplay_tab"))
+            (ConfigEditorTab::Gameplay, t!("config_editor.gameplay_tab")),
+            (ConfigEditorTab::Advanced, t!("config_editor.advanced_tab"))
         ]
     }
 }
@@ -1772,7 +1845,8 @@ impl ConfigEditor {
             last_ptr_config: Arc::as_ptr(&handle) as usize,
             config: (**Hachimi::instance().config.load()).clone(),
             id: random_id(),
-            current_tab: ConfigEditorTab::General
+            current_tab: ConfigEditorTab::General,
+            localized_data_dirs: Hachimi::instance().get_localized_data_dirs()
         }
     }
 
@@ -1802,7 +1876,7 @@ impl ConfigEditor {
         }
     }
 
-    fn run_options_grid(config: &mut hachimi::Config, ui: &mut egui::Ui, tab: ConfigEditorTab) {
+    fn run_options_grid(config: &mut hachimi::Config, ui: &mut egui::Ui, tab: ConfigEditorTab, available_dirs: &[String]) {
         let scale = get_scale(ui.ctx());
         ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
 
@@ -1830,11 +1904,6 @@ impl ConfigEditor {
                     }
                 }
                 ui.end_row();
-
-                ui.label(t!("config_editor.ipv4_only"));
-                ui.checkbox(&mut config.ipv4_only, "");
-                ui.end_row();
-
                 ui.label(t!("config_editor.meta_index_url"));
                 let res = ui.add(egui::TextEdit::singleline(&mut config.meta_index_url).lock_focus(true));
                 #[cfg(target_os = "android")]
@@ -1897,49 +1966,6 @@ impl ConfigEditor {
                     });
                     ui.end_row();
                 }
-
-                ui.label(t!("config_editor.debug_mode"));
-                ui.checkbox(&mut config.debug_mode, "");
-                ui.end_row();
-
-                ui.label(t!("config_editor.text_debug"));
-                ui.checkbox(&mut config.text_debug, "");
-                ui.end_row();
-
-                if !config.text_debug {
-                    config.text_log = false;
-                    config.text_property_dump = false;
-                    config.text_localize_dump = false;
-                    config.text_position_debug = false;
-                    config.text_path_debug = false;
-                }
-
-                if config.text_debug {
-                    ui.label(format!("  \u{21b3} {}", t!("config_editor.text_log")));
-                    ui.checkbox(&mut config.text_log, "");
-                    ui.end_row();
-
-                    ui.label(format!("  \u{21b3} {}", t!("config_editor.text_property_dump")));
-                    ui.checkbox(&mut config.text_property_dump, "");
-                    ui.end_row();
-
-                    ui.label(format!("  \u{21b3} {}", t!("config_editor.text_localize_dump")));
-                    ui.checkbox(&mut config.text_localize_dump, "");
-                    ui.end_row();
-
-                    ui.label(format!("  \u{21b3} {}", t!("config_editor.text_position_debug")));
-                    ui.checkbox(&mut config.text_position_debug, "");
-                    ui.end_row();
-
-                    ui.label(format!("  \u{21b3} {}", t!("config_editor.text_path_debug")));
-                    ui.checkbox(&mut config.text_path_debug, "");
-                    ui.end_row();
-                }
-
-                ui.label(t!("config_editor.enable_file_logging"));
-                ui.checkbox(&mut config.enable_file_logging, "");
-                ui.end_row();
-
                 ui.label(t!("config_editor.apply_atlas_workaround"));
                 ui.checkbox(&mut config.apply_atlas_workaround, "");
                 ui.end_row();
@@ -1963,15 +1989,6 @@ impl ConfigEditor {
                 ui.label(t!("config_editor.disable_translations"));
                 ui.checkbox(&mut config.disable_translations, "");
                 ui.end_row();
-
-                ui.label(t!("config_editor.enable_ipc"));
-                ui.checkbox(&mut config.enable_ipc, "");
-                ui.end_row();
-
-                ui.label(t!("config_editor.ipc_listen_all"));
-                ui.checkbox(&mut config.ipc_listen_all, "");
-                ui.end_row();
-
                 ui.label(t!("config_editor.auto_translate_stories"));
                 if ui.checkbox(&mut config.auto_translate_stories, "").clicked() {
                     if config.auto_translate_stories {
@@ -2177,10 +2194,73 @@ impl ConfigEditor {
                 }
                 ui.end_row();
             }
+            ConfigEditorTab::Advanced => {
+                ui.label(t!("config_editor.debug_mode"));
+                ui.checkbox(&mut config.debug_mode, "");
+                ui.end_row();
+
+                ui.label(t!("config_editor.text_debug"));
+                ui.checkbox(&mut config.text_debug, "");
+                ui.end_row();
+
+                if !config.text_debug {
+                    config.text_log = false;
+                    config.text_property_dump = false;
+                    config.text_localize_dump = false;
+                    config.text_position_debug = false;
+                    config.text_path_debug = false;
+                }
+
+                if config.text_debug {
+                    ui.label(format!("  \u{21b3} {}", t!("config_editor.text_log")));
+                    ui.checkbox(&mut config.text_log, "");
+                    ui.end_row();
+
+                    ui.label(format!("  \u{21b3} {}", t!("config_editor.text_property_dump")));
+                    ui.checkbox(&mut config.text_property_dump, "");
+                    ui.end_row();
+
+                    ui.label(format!("  \u{21b3} {}", t!("config_editor.text_localize_dump")));
+                    ui.checkbox(&mut config.text_localize_dump, "");
+                    ui.end_row();
+
+                    ui.label(format!("  \u{21b3} {}", t!("config_editor.text_position_debug")));
+                    ui.checkbox(&mut config.text_position_debug, "");
+                    ui.end_row();
+
+                    ui.label(format!("  \u{21b3} {}", t!("config_editor.text_path_debug")));
+                    ui.checkbox(&mut config.text_path_debug, "");
+                    ui.end_row();
+                }
+
+                ui.label(t!("config_editor.enable_file_logging"));
+                ui.checkbox(&mut config.enable_file_logging, "");
+                ui.end_row();
+
+                ui.label(t!("config_editor.enable_ipc"));
+                ui.checkbox(&mut config.enable_ipc, "");
+                ui.end_row();
+
+                ui.label(t!("config_editor.ipc_listen_all"));
+                ui.checkbox(&mut config.ipc_listen_all, "");
+                ui.end_row();
+
+                ui.label(t!("config_editor.ipv4_only"));
+                ui.checkbox(&mut config.ipv4_only, "");
+                ui.end_row();
+
+                ui.label(t!("config_editor.localized_data_dir"));
+                let mut current_dir = config.localized_data_dir.clone().unwrap_or_else(|| "localized_data".to_string());
+                let choices: Vec<(String, &str)> = available_dirs.iter().map(|s| (s.clone(), s.as_str())).collect();
+                if Gui::run_combo_string(ui, "localized_data_dir", &mut current_dir, &choices) {
+                    config.localized_data_dir = Some(current_dir);
+                }
+                ui.end_row();
+            }
         }
 
         // Column widths workaround
-        ui.horizontal(|ui| ui.add_space(100.0 * scale));
+        ui.horizontal(|ui| ui.add_space(120.0 * scale));
         ui.horizontal(|ui| ui.add_space(150.0 * scale));
         ui.end_row();
     }
@@ -2206,6 +2286,7 @@ impl Window for ConfigEditor {
             config.windows.menu_open_key = global_handle.windows.menu_open_key;
         }
         let mut reset_clicked = false;
+        let available_dirs = &self.localized_data_dirs;
 
         new_window(ctx, self.id, t!("config_editor.title"))
         .open(&mut open)
@@ -2214,6 +2295,7 @@ impl Window for ConfigEditor {
                 |ui| {
                     egui::ScrollArea::horizontal()
                     .id_salt("tabs_scroll")
+                    .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
                     .show(ui, |ui| {
                         ui.horizontal(|ui| {
                             let style = ui.style_mut();
@@ -2237,17 +2319,35 @@ impl Window for ConfigEditor {
                     egui::ScrollArea::vertical()
                     .id_salt("body_scroll")
                     .show(ui, |ui| {
-                        egui::Frame::NONE
+                        let general_width = ctx.data(|d| {
+                            d.get_temp::<f32>(self.id.with("general_tab_width")).unwrap_or(0.0)
+                        });
+                        if general_width > 0.0 {
+                            ui.set_min_width(general_width);
+                        }
+
+                        let frame_response = egui::Frame::NONE
                         .inner_margin(egui::Margin::symmetric(8, 0))
                         .show(ui, |ui| {
-                            egui::Grid::new(self.id.with("options_grid"))
+                            egui::Grid::new(self.id.with(("options_grid", self.current_tab)))
                             .striped(true)
                             .num_columns(2)
                             .spacing([40.0 * scale, 4.0 * scale])
                             .show(ui, |ui| {
-                                Self::run_options_grid(&mut config, ui, self.current_tab);
+                                Self::run_options_grid(&mut config, ui, self.current_tab, available_dirs);
                             });
                         });
+
+                        if self.current_tab == ConfigEditorTab::General || self.current_tab == ConfigEditorTab::Advanced {
+                            let w = frame_response.response.rect.width();
+                            ctx.data_mut(|d| {
+                                let old_w = d.get_temp::<f32>(self.id.with("general_tab_width")).unwrap_or(0.0);
+                                if w > old_w {
+                                    d.insert_temp(self.id.with("general_tab_width"), w);
+                                }
+                            });
+                        }
+
                         #[cfg(target_os = "android")]
                         {
                             let padding = ime_scroll_padding(ui.ctx());

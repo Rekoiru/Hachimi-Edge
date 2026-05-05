@@ -217,7 +217,7 @@ pub fn patch_asset(this: *mut Il2CppObject, data_opt: Option<&AnRootData>) {
                     warn!("Failed to get text_param_list for motion param {}", *i);
                      continue;
                  };
-                
+
                 for (j, text_param_data) in motion_param_data.text_param_list.iter() {
                     let Some(text_param) = text_param_list.get(*j) else {
                         warn!("text param {} of motion param {} out of range (max {})", *j, *i, text_param_list.count());
