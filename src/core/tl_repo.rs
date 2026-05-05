@@ -256,41 +256,47 @@ impl Updater {
                 continue;
             }
 
-            let path = ld_dir_path.as_ref().map(|p| p.join(&file.path));
-            let exists = path.as_ref().map(|p| p.is_file()).unwrap_or(false);
-
             let updated = if is_new_repo {
                 // redownload every single file because the directory will be deleted
                 true
-            } else if !pedantic && exists && excludes.contains(&file.path) {
-                // skip excluded file unless pedantic update or the file doesn't exist in the system
-                false
-            } else if let Some(hash) = repo_cache.files.get(&file.path) {
-                // lazy auto update, cached hash and repo hash matches. ignored during pedantic
-                if !pedantic && config.lazy_translation_updates && hash == &file.hash {
-                    false
-                } else if let Some(path) = path { // get path or force download if path is invalid
-                    // file doesn't exist -> download
-                    if !exists {
-                        true
-                    } else {
-                        if hash != &file.hash {
-                            true // index hash changed -> update
-                        } else if fs::metadata(&path).map(|m| m.len() as usize != file.size).unwrap_or(true) {
-                            true // size mismatch -> redownload
-                        } else if pedantic {
-                            // full blake3 integrity check if user requested pedantic update
-                            !file.verify_integrity(&path)
-                        } else {
-                            false // everything matches -> skip
-                        }
-                    }
+            } else if !pedantic && config.lazy_translation_updates {
+                // lazy auto update, just compare index hash with cache hash
+                if let Some(hash) = repo_cache.files.get(&file.path) {
+                    hash != &file.hash
                 } else {
-                    true // path invalid -> download
+                    true
                 }
             } else {
-                // file doesn't exist in cache at all -> download it
-                true
+                let path = ld_dir_path.as_ref().map(|p| p.join(&file.path));
+                let exists = path.as_ref().map(|p| p.is_file()).unwrap_or(false);
+
+                if !pedantic && exists && excludes.contains(&file.path) {
+                    // skip excluded file unless pedantic update or the file doesn't exist in the system
+                    false
+                } else if let Some(hash) = repo_cache.files.get(&file.path) {
+                    if let Some(path) = path { // get path or force download if path is invalid
+                        // file doesn't exist -> download
+                        if !exists {
+                            true
+                        } else {
+                            if hash != &file.hash {
+                                true // index hash changed -> update
+                            } else if fs::metadata(&path).map(|m| m.len() as usize != file.size).unwrap_or(true) {
+                                true // size mismatch -> redownload
+                            } else if pedantic {
+                                // full blake3 integrity check if user requested pedantic update
+                                !file.verify_integrity(&path)
+                            } else {
+                                false // everything matches -> skip
+                            }
+                        }
+                    } else {
+                        true // path invalid -> download
+                    }
+                } else {
+                    // file doesn't exist in cache at all -> download it
+                    true
+                }
             };
 
             if updated {
