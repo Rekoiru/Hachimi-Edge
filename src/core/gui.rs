@@ -61,6 +61,19 @@ pub fn enqueue_theme_preview(config: hachimi::Config) {
     }
 }
 
+static PREV_MENU_WIDTH: Mutex<f32> = Mutex::new(200.0);
+static REQUESTED_WIDTH: Mutex<Option<f32>> = Mutex::new(None);
+
+pub fn get_menu_width() -> f32 {
+    *PREV_MENU_WIDTH.lock().unwrap()
+}
+
+pub fn set_menu_width(width: f32) {
+    if let Ok(mut lock) = REQUESTED_WIDTH.lock() {
+        *lock = Some(width);
+    }
+}
+
 type BoxedWindow = Box<dyn Window + Send + Sync>;
 pub struct Gui {
     pub context: egui::Context,
@@ -762,8 +775,19 @@ impl Gui {
             let ctx = &self.context;
             let scale = get_scale(ctx);
             let salt = self.finalized_scale;
-            egui::SidePanel::left(egui::Id::new("hachimi_menu").with(salt.to_bits()))
-                .min_width(96.0 * scale)
+            let mut min_w = 96.0 * scale;
+            let mut max_w = f32::INFINITY;
+
+            if let Ok(mut lock) = REQUESTED_WIDTH.lock() {
+                if let Some(w) = lock.take() {
+                    min_w = w;
+                    max_w = w;
+                }
+            }
+
+            let panel_res = egui::SidePanel::left(egui::Id::new("hachimi_menu").with(salt.to_bits()))
+                .min_width(min_w)
+                .max_width(max_w)
                 .default_width(200.0 * scale)
                 .show_animated(ctx, self.show_menu, |ui| {
                 ui.with_layout(egui::Layout::top_down_justified(egui::Align::TOP), |ui| {
@@ -1001,6 +1025,13 @@ impl Gui {
                     });
                 });
             });
+
+            if let Some(inner) = &panel_res {
+                let current_width = inner.response.rect.width();
+                if let Ok(mut prev_lock) = PREV_MENU_WIDTH.lock() {
+                    *prev_lock = current_width;
+                }
+            }
         }
 
         for message in drain_plugin_notifications() {
@@ -1110,7 +1141,7 @@ impl Gui {
         changed
     }
 
-    fn run_combo_menu<T: PartialEq + Copy>(
+    pub fn run_combo_menu<T: PartialEq + Copy>(
         ui: &mut egui::Ui,
         id_salt: impl std::hash::Hash,
         value: &mut T,

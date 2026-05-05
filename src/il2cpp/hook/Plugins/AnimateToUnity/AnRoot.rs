@@ -231,7 +231,7 @@ pub fn patch_asset(this: *mut Il2CppObject, data_opt: Option<&AnRootData>) {
                     if let Some(position_offset) = &text_param_data.base.position_offset {
                         AnObjectParameterBase::set__positionOffset(text_param, position_offset);
                     }
-                                                                        
+
                     if let Some(scale) = &text_param_data.base.scale {
                         AnObjectParameterBase::set__scale(text_param, scale);
                     }
@@ -269,7 +269,7 @@ pub fn patch_asset(this: *mut Il2CppObject, data_opt: Option<&AnRootData>) {
                     if let Some(position_offset) = &plane_param_data.base.position_offset {
                         AnObjectParameterBase::set__positionOffset(plane_param, position_offset);
                     }
-                                                                        
+
                     if let Some(scale) = &plane_param_data.base.scale {
                         AnObjectParameterBase::set__scale(plane_param, scale);
                     }
@@ -307,7 +307,7 @@ pub fn patch_asset(this: *mut Il2CppObject, data_opt: Option<&AnRootData>) {
                     if let Some(position_offset) = &object_param_data.base.position_offset {
                         AnObjectParameterBase::set__positionOffset(object_param, position_offset);
                     }
-                                                                        
+
                     if let Some(scale) = &object_param_data.base.scale {
                         AnObjectParameterBase::set__scale(object_param, scale);
                     }
