@@ -2319,17 +2319,10 @@ impl Window for ConfigEditor {
                     egui::ScrollArea::vertical()
                     .id_salt("body_scroll")
                     .show(ui, |ui| {
-                        let general_width = ctx.data(|d| {
-                            d.get_temp::<f32>(self.id.with("general_tab_width")).unwrap_or(0.0)
-                        });
-                        if general_width > 0.0 {
-                            ui.set_min_width(general_width);
-                        }
-
-                        let frame_response = egui::Frame::NONE
+                        egui::Frame::NONE
                         .inner_margin(egui::Margin::symmetric(8, 0))
                         .show(ui, |ui| {
-                            egui::Grid::new(self.id.with(("options_grid", self.current_tab)))
+                            egui::Grid::new(self.id.with("options_grid"))
                             .striped(true)
                             .num_columns(2)
                             .spacing([40.0 * scale, 4.0 * scale])
@@ -2337,16 +2330,6 @@ impl Window for ConfigEditor {
                                 Self::run_options_grid(&mut config, ui, self.current_tab, available_dirs);
                             });
                         });
-
-                        if self.current_tab == ConfigEditorTab::General || self.current_tab == ConfigEditorTab::Advanced {
-                            let w = frame_response.response.rect.width();
-                            ctx.data_mut(|d| {
-                                let old_w = d.get_temp::<f32>(self.id.with("general_tab_width")).unwrap_or(0.0);
-                                if w > old_w {
-                                    d.insert_temp(self.id.with("general_tab_width"), w);
-                                }
-                            });
-                        }
 
                         #[cfg(target_os = "android")]
                         {
