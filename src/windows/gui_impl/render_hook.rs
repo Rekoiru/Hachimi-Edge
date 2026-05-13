@@ -3,7 +3,7 @@ use std::{os::raw::{c_uint, c_void}, sync::Mutex};
 
 use once_cell::sync::OnceCell;
 use windows::{
-    core::{w, Interface, HRESULT},
+    core::{HRESULT, Interface, w},
     Win32::{
         Foundation::{HINSTANCE, HMODULE, HWND, LPARAM, LRESULT, RECT, WPARAM}, Graphics::{
             Direct3D::{D3D_DRIVER_TYPE_HARDWARE, D3D_FEATURE_LEVEL, D3D_FEATURE_LEVEL_11_0},
@@ -44,6 +44,8 @@ fn check_hwnd(this: *mut c_void) -> HWND {
         HWND(std::ptr::null_mut())
     }
 }
+
+static IME_COMPOSITION_POS: Mutex<(f32, f32)> = Mutex::new((0.0, 0.0));
 
 static mut PRESENT_ADDR: usize = 0; 
 type PresentFn = extern "C" fn(this: *mut c_void, sync_interval: c_uint, flags: c_uint) -> HRESULT;
@@ -91,6 +93,29 @@ extern "C" fn IDXGISwapChain_Present(this: *mut c_void, sync_interval: c_uint, f
 
     // Run and render the GUI
     let output = gui.run();
+
+    for (_viewport_id, viewport_output) in &output.viewport_output {
+        for cmd in &viewport_output.commands {
+            // Intercept egui telling the OS where the text cursor currently is
+            if let egui::ViewportCommand::IMERect(rect) = cmd {
+                // Windows IME boxes usually look best positioned at the bottom-left of the cursor.
+                let zoom = gui.context.zoom_factor();
+                let x = rect.min.x * zoom;
+                let y = rect.max.y * zoom;
+                let y_unity = height as f32 - y;
+                *IME_COMPOSITION_POS.lock().unwrap() = (x, y_unity);
+
+                crate::il2cpp::symbols::Thread::main_thread().schedule(|| {
+                    let (x, y_unity) = *IME_COMPOSITION_POS.lock().unwrap();
+
+                    crate::il2cpp::hook::UnityEngine_InputLegacyModule::Input::set_compositionCursorPos(
+                        crate::il2cpp::types::Vector2_t { x, y: y_unity }
+                    );
+                });
+            }
+        }
+    }
+
     let (mut renderer_output, _, _) = egui_directx11::split_output(output);
 
     let layout_pixels_per_point = renderer_output.pixels_per_point;

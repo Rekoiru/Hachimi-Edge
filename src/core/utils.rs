@@ -17,7 +17,7 @@ pub struct SendPtr(pub *mut Il2CppObject);
 unsafe impl Send for SendPtr {}
 unsafe impl Sync for SendPtr {}
 
-static LOCALIZE_ID_CACHE: Lazy<Mutex<FnvHashMap<String, i32>>> = 
+static LOCALIZE_ID_CACHE: Lazy<Mutex<FnvHashMap<String, i32>>> =
     Lazy::new(|| Mutex::new(FnvHashMap::default()));
 
 pub fn get_localized_string(id_name: &str) -> String {
@@ -61,7 +61,7 @@ pub fn char_to_utf16_index(text: &str, char_idx: usize) -> i32 {
 pub fn utf16_to_char_index(text: &str, utf16_idx: usize) -> usize {
     let mut current_utf16_pos = 0;
     let mut char_pos = 0;
-    
+
     for c in text.chars() {
         if current_utf16_pos >= utf16_idx {
             break;
@@ -448,7 +448,13 @@ pub fn wrap_fit_text(string: &str, base_line_width: i32, mut max_line_count: i32
     loop {
         let wrapped = wrap_text_internal(string, line_width.round() as i32, line_width_multiplier);
         if wrapped.len() as i32 <= max_line_count {
-            return Some(add_size_tag(&wrapped.join("\n"), font_size.round() as i32));
+            let new_size = font_size.round() as i32;
+            let new_text = wrapped.join("\n");
+            return Some(if new_size != base_font_size {
+                add_size_tag(&new_text, new_size)
+            } else {
+                new_text
+            });
         }
 
         let prev_max_line_count = max_line_count;
@@ -635,9 +641,17 @@ pub fn get_data_path() -> String {
             .join("umamusume_Data")
             .join("Persistent");
 
-        if game.region == Region::Japan && game.is_steam_release && jp_steam_data_path.exists() {
+        let dir_ok = |path: &std::path::Path| {
+            path.exists()
+                && std::fs::read_dir(path)
+                    .map(|mut d| d.next().is_some())
+                    .unwrap_or(false)
+                && path.join("master").join("master.mdb").exists()
+        };
+
+        if game.region == Region::Japan && game.is_steam_release && dir_ok(&jp_steam_data_path) {
             jp_steam_data_path.to_string_lossy().to_string()
-        } else if game.region == Region::Japan && !game.is_steam_release && new_jp_dmm_data_path.exists() {
+        } else if game.region == Region::Japan && !game.is_steam_release && dir_ok(&new_jp_dmm_data_path) {
             new_jp_dmm_data_path.to_string_lossy().to_string()
         } else {
             unsafe { (*Application::get_persistentDataPath()).as_utf16str() }.to_string()

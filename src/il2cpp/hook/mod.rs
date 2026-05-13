@@ -77,6 +77,9 @@ pub mod UnityEngine_UI;
 pub mod UnityEngine_UIModule;
 pub mod Unity_TextMeshPro;
 
+#[cfg(target_os = "windows")]
+pub mod UnityEngine_InputLegacyModule;
+
 pub mod LibNative_Runtime;
 pub mod umamusume;
 pub mod Cute_UI_Assembly;
@@ -98,10 +101,14 @@ pub fn init() {
     UnityEngine_CoreModule::init();
     UnityEngine_TextRenderingModule::init();
     UnityEngine_ImageConversionModule::init();
+
     Unity_RenderPipelines_Universal_Runtime::init();
     UnityEngine_UI::init();
     UnityEngine_UIModule::init();
     Unity_TextMeshPro::init();
+
+    #[cfg(target_os = "windows")]
+    UnityEngine_InputLegacyModule::init();
 
     // Umamusume
     LibNative_Runtime::init();

@@ -3,9 +3,13 @@ use std::{os::raw::c_uint, ptr, sync::{atomic::{self, AtomicIsize}, Arc}};
 use windows::{core::w, Win32::{
     Foundation::{HWND, LPARAM, LRESULT, WPARAM},
     System::Threading::GetCurrentThreadId,
-    UI::WindowsAndMessaging::{
-        CallNextHookEx, DefWindowProcW, FindWindowW, GetWindowLongPtrW, SetWindowsHookExW, UnhookWindowsHookEx,
-        GWLP_WNDPROC, HCBT_MINMAX, HHOOK, SW_RESTORE, WH_CBT, WM_CLOSE, WM_KEYDOWN, WM_SYSKEYDOWN, WNDPROC
+    UI::{
+        Input::Ime::ISC_SHOWUICOMPOSITIONWINDOW,
+        WindowsAndMessaging::{
+            CallNextHookEx, DefWindowProcW, FindWindowW, GetWindowLongPtrW, SetWindowsHookExW, UnhookWindowsHookEx,
+            GWLP_WNDPROC, HCBT_MINMAX, HHOOK, SW_RESTORE, WH_CBT, WM_CLOSE, WM_KEYDOWN, WM_SYSKEYDOWN, WNDPROC,
+            WM_IME_SETCONTEXT, WM_IME_NOTIFY, WM_ACTIVATE, WA_INACTIVE
+        },
     }
 }};
 
@@ -70,9 +74,25 @@ extern "system" fn wnd_proc(hwnd: HWND, umsg: c_uint, wparam: WPARAM, lparam: LP
 
                 gui.toggle_menu();
                 return LRESULT(0);
-            }else if current_key == Hachimi::instance().config.load().windows.hide_ingame_ui_hotkey_bind {
+            }else if current_key == Hachimi::instance().config.load().windows.hide_ingame_ui_hotkey_bind && Hachimi::instance().config.load().hide_ingame_ui_hotkey {
                 Thread::main_thread().schedule(Gui::toggle_game_ui);
             }
+        },
+        WM_ACTIVATE => {
+            let res = unsafe { orig_fn(hwnd, umsg, wparam, lparam) };
+
+            if (wparam.0 & 0xFFFF) != WA_INACTIVE as usize {
+                std::thread::spawn(move || {
+                    if let Some(gui) = Gui::instance().map(|m| m.lock().unwrap()) {
+                        if gui.context.wants_keyboard_input() {
+                            Thread::main_thread().schedule(|| {
+                                crate::il2cpp::hook::UnityEngine_InputLegacyModule::Input::set_imeCompositionMode(1);
+                            });
+                        }
+                    }
+                });
+            }
+            return res;
         },
         WM_CLOSE => {
             if let Some(hook) = Hachimi::instance().interceptor.unhook(wnd_proc as *const () as _) {
@@ -94,8 +114,25 @@ extern "system" fn wnd_proc(hwnd: HWND, umsg: c_uint, wparam: WPARAM, lparam: LP
         return unsafe { orig_fn(hwnd, umsg, wparam, lparam) };
     }
 
-    // Check if the input processor handles this message
-    if !input::is_handled_msg(umsg) {
+    if umsg == WM_IME_SETCONTEXT {
+        let new_lparam = lparam.0 & !(ISC_SHOWUICOMPOSITIONWINDOW as isize);
+        if Gui::is_consuming_input_atomic() {
+            return unsafe { DefWindowProcW(hwnd, umsg, wparam, LPARAM(new_lparam)) };
+        }
+        return unsafe { orig_fn(hwnd, umsg, wparam, LPARAM(new_lparam)) };
+    }
+
+    if umsg == WM_IME_NOTIFY {
+        if Gui::is_consuming_input_atomic() {
+            return unsafe { DefWindowProcW(hwnd, umsg, wparam, lparam) };
+        }
+    }
+
+    // Extract the IME data BEFORE spanning the thread
+    let (is_ime, ime_commit, ime_preedit) = input::process_ime_sync(hwnd, umsg, lparam.0);
+
+    // Check if the input processor handles this message (Skip check if it is an IME msg)
+    if !input::is_handled_msg(umsg) && !is_ime {
         return unsafe { orig_fn(hwnd, umsg, wparam, lparam) };
     }
 
@@ -107,9 +144,24 @@ extern "system" fn wnd_proc(hwnd: HWND, umsg: c_uint, wparam: WPARAM, lparam: LP
             return;
         };
 
-        let zoom_factor = gui.context.zoom_factor();
-        input::process(&mut gui.input, zoom_factor, umsg, wparam.0, lparam.0);
+        // Inject IME strings directly into egui
+        if let Some(s) = ime_commit {
+            gui.input.events.push(egui::Event::Ime(egui::ImeEvent::Commit(s)));
+        }
+        if let Some(s) = ime_preedit {
+            gui.input.events.push(egui::Event::Ime(egui::ImeEvent::Preedit(s)));
+        }
+
+        // Process standard Key/Mouse inputs ONLY if it wasn't an IME message
+        if !is_ime {
+            let zoom_factor = gui.context.zoom_factor();
+            input::process(&mut gui.input, zoom_factor, umsg, wparam.0, lparam.0);
+        }
     });
+
+    if is_ime {
+        return LRESULT(0);
+    }
 
     LRESULT(0)
 }

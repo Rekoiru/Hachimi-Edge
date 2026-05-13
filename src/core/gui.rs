@@ -75,7 +75,6 @@ pub struct Gui {
     last_fps_update: Instant,
     tmp_frame_count: u32,
     fps_text: String,
-    #[cfg(target_os = "android")]
     last_focused: Option<egui::Id>,
     #[cfg(target_os = "android")]
     ime_cooldown: Option<Instant>,
@@ -96,6 +95,7 @@ pub struct Gui {
     pub update_progress_visible: bool,
 
     notifications: Vec<Notification>,
+    next_notification_id: u32,
     windows: Vec<BoxedWindow>
 }
 
@@ -476,7 +476,6 @@ impl Gui {
             last_fps_update: now,
             tmp_frame_count: 0,
             fps_text: "FPS: 0".to_string(),
-            #[cfg(target_os = "android")]
             last_focused: None,
             #[cfg(target_os = "android")]
             ime_cooldown: None,
@@ -507,6 +506,7 @@ impl Gui {
             update_progress_visible: false,
 
             notifications: Vec::new(),
+            next_notification_id: 0,
             windows
         };
 
@@ -635,6 +635,26 @@ impl Gui {
             self.show_notification(&t!("notification.config_error"));
         }
 
+        #[cfg(target_os = "windows")]
+        {
+            use crate::il2cpp::hook::UnityEngine_InputLegacyModule::Input::set_imeCompositionMode;
+
+            let focused = self.context.memory(|m| m.focused());
+            let wants_kb = self.context.wants_keyboard_input();
+
+            if focused != self.last_focused {
+                if wants_kb {
+                    Thread::main_thread().schedule(|| {
+                        set_imeCompositionMode(1);
+                    });
+                } else if self.last_focused.is_some() {
+                    Thread::main_thread().schedule(|| {
+                        set_imeCompositionMode(0);
+                    });
+                }
+            }
+            self.last_focused = focused;
+        }
         #[cfg(target_os = "android")]
         {
             use crate::android::utils::{set_keyboard_visible, check_keyboard_status, BACK_BUTTON_PRESSED, IS_IME_VISIBLE};
@@ -1319,7 +1339,22 @@ impl Gui {
     }
 
     pub fn show_notification(&mut self, content: &str) {
-        self.notifications.push(Notification::new(content.to_owned()));
+        self.add_notification(content, false);
+    }
+
+    pub fn show_persistent_notification(&mut self, content: &str) -> u32 {
+        self.add_notification(content, true)
+    }
+
+    fn add_notification(&mut self, content: &str, persistent: bool) -> u32 {
+        let id = self.next_notification_id;
+        self.notifications.push(Notification::new(id, content.to_owned(), persistent));        
+        self.next_notification_id = self.next_notification_id.wrapping_add(1);
+        id
+    }
+
+    pub fn close_notification(&mut self, id: u32) {
+        self.notifications.retain(|n| n.id != id);
     }
 
     pub fn show_window(&mut self, window: BoxedWindow) {
@@ -1391,32 +1426,51 @@ fn random_id() -> egui::Id {
     egui::Id::new(egui::epaint::ahash::RandomState::new().hash_one(0))
 }
 
+pub struct NotificationGuard(pub u32); 
+
+impl Drop for NotificationGuard {
+    fn drop(&mut self) {
+        if let Some(mutex) = Gui::instance() {
+            if let Ok(mut gui) = mutex.lock() {
+                gui.close_notification(self.0);
+            }
+        }
+    }
+}
+
 struct Notification {
+    id: u32,
     content: String,
     config: hachimi::Config,
     tween: TweenInOutWithDelay,
-    id: egui::Id
+    egui_id: egui::Id
 }
 
 impl Notification {
-    fn new(content: String) -> Notification {
+    fn new(id: u32, content: String, persistent: bool) -> Notification {
         Notification {
+            id,
             content,
             config: (**Hachimi::instance().config.load()).clone(),
-            tween: TweenInOutWithDelay::new(0.2, 3.0, Easing::OutQuad),
-            id: random_id()
+            tween: TweenInOutWithDelay::new(
+                0.2, 
+                if persistent { f32::MAX } else { 3.0 }, 
+                Easing::OutQuad
+            ),
+            egui_id: random_id()
         }
     }
 
     const WIDTH: f32 = 150.0;
+
     fn run(&mut self, ctx: &egui::Context, offset: &mut f32) -> bool {
         let scale = get_scale(ctx);
 
-        let Some(tween_val) = self.tween.run(ctx, self.id.with("tween")) else {
+        let Some(tween_val) = self.tween.run(ctx, self.egui_id.with("tween")) else {
             return false;
         };
 
-        let frame_rect = egui::Area::new(self.id)
+        let frame_rect = egui::Area::new(self.egui_id)
         .anchor(
             egui::Align2::RIGHT_BOTTOM,
             egui::Vec2::new(

@@ -1,7 +1,6 @@
 [package]
 name = "hachimi"
-version = "0.23.1"
-rust-version = "1.91.1"
+version = "0.25.4"
 edition = "2021"
 
 [lib]
@@ -77,6 +76,7 @@ features = [
     "Win32_System_Diagnostics_ToolHelp",
     "Win32_System_Threading",
     "Win32_UI_WindowsAndMessaging",
+    "Win32_UI_Input_Ime",
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_UI_Shell",
     "Win32_Graphics_Dxgi",

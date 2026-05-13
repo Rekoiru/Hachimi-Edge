@@ -24,6 +24,14 @@ pub fn get__bgButton(this: *mut Il2CppObject) -> *mut Il2CppObject {
     get_field_object_value(this, unsafe { _BGBUTTON_FIELD })
 }
 
+static mut INFO_FIELD: *mut FieldInfo = 0 as _;
+pub fn get_info(this: *mut Il2CppObject) -> *mut Il2CppObject {
+    get_field_object_value(this, unsafe { INFO_FIELD })
+}
+
+static mut set_skill_name_text_addr: usize = 0;
+impl_addr_wrapper_fn!(set_skill_name_text, set_skill_name_text_addr, (), this: *mut Il2CppObject);
+
 // PartsSingleModeSkillListItem.Info
 static mut get_IsDrawDesc_addr: usize = 0;
 impl_addr_wrapper_fn!(get_IsDrawDesc, get_IsDrawDesc_addr, bool, this: *mut Il2CppObject);
@@ -95,10 +103,10 @@ fn UpdateItemCommon(this: *mut Il2CppObject, skill_info: *mut Il2CppObject, orig
     }
 }
 
-type UpdateItemJpFn = extern "C" fn(this: *mut Il2CppObject, skill_info: *mut Il2CppObject, is_plate_effect_enable: bool, resource_hash: i32);
-extern "C" fn UpdateItemJp(this: *mut Il2CppObject, skill_info: *mut Il2CppObject, is_plate_effect_enable: bool, resource_hash: i32) {
+type UpdateItemJpFn = extern "C" fn(this: *mut Il2CppObject, skill_info: *mut Il2CppObject, is_plate_effect_enable: bool, adjuster_data: *mut Il2CppObject, resource_hash: i32);
+extern "C" fn UpdateItemJp(this: *mut Il2CppObject, skill_info: *mut Il2CppObject, is_plate_effect_enable: bool, adjuster_data: *mut Il2CppObject, resource_hash: i32) {
     UpdateItemCommon(this, skill_info, || {
-        get_orig_fn!(UpdateItemJp, UpdateItemJpFn)(this, skill_info, is_plate_effect_enable, resource_hash);
+        get_orig_fn!(UpdateItemJp, UpdateItemJpFn)(this, skill_info, is_plate_effect_enable, adjuster_data, resource_hash);
     });
 }
 
@@ -109,7 +117,7 @@ extern "C" fn UpdateItemOther(this: *mut Il2CppObject, skill_info: *mut Il2CppOb
     });
 }
 
-fn get_skill_text(skill_id: i32) -> (String, String) {    
+fn get_skill_text(skill_id: i32) -> (String, String) {
     let to_s = |opt_ptr: Option<*mut Il2CppString>| unsafe {
         opt_ptr.and_then(|p| p.as_ref()).map(|s| s.as_utf16str().to_string())
     };
@@ -174,7 +182,7 @@ pub fn init(umamusume: *const Il2CppImage) {
     find_nested_class_or_return!(PartsSingleModeSkillListItem, Info);
 
     if Hachimi::instance().game.region == Region::Japan {
-        let UpdateItem_addr = get_method_addr(PartsSingleModeSkillListItem, c"UpdateItem", 3);
+        let UpdateItem_addr = get_method_addr(PartsSingleModeSkillListItem, c"UpdateItem", 4);
         new_hook!(UpdateItem_addr, UpdateItemJp);
     }
     else {
@@ -190,6 +198,8 @@ pub fn init(umamusume: *const Il2CppImage) {
         NAMETEXT_FIELD = get_field_from_name(PartsSingleModeSkillListItem, c"_nameText");
         DESCTEXT_FIELD = get_field_from_name(PartsSingleModeSkillListItem, c"_descText");
         _BGBUTTON_FIELD = get_field_from_name(PartsSingleModeSkillListItem, c"_bgButton");
+        INFO_FIELD = get_field_from_name(PartsSingleModeSkillListItem, c"_info");
+        set_skill_name_text_addr = get_method_addr(PartsSingleModeSkillListItem, c"SetSkillNameText", 0);
 
         // PartsSingleModeSkillListItem.Info
         get_IsDrawDesc_addr = get_method_addr(Info, c"get_IsDrawDesc", 0);
