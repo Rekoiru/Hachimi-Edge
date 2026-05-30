@@ -73,6 +73,7 @@ notification:
   press_to_set_menu_key: "Press a key in the game window to set the open-menu hotkey."
   menu_open_key_set: "Open-menu hotkey set to %{key}"
   ipc_softreset_exec: "IPC remote soft-reset executed"
+  asset_mismatch: "Some assets have been disabled due to an update. Check the logs for details."
 
 first_time_setup:
   title: "First Time Setup"
@@ -141,6 +142,7 @@ config_editor:
   enable_file_logging: "Enable file logging"
   localized_data_dir: "Localized data directory"
   apply_atlas_workaround: "Apply TL Atlas Workaround"
+  disable_outdated_asset_notif: "Disable outdated assets notification"
   translator_mode: "Translator mode"
   skip_first_time_setup: "Skip first time setup"
   lazy_translation_updates: "Lazy translation updates"

@@ -1970,6 +1970,10 @@ impl ConfigEditor {
                 ui.checkbox(&mut config.apply_atlas_workaround, "");
                 ui.end_row();
 
+                ui.label(t!("config_editor.disable_outdated_asset_notif"));
+                ui.checkbox(&mut config.disable_outdated_asset_notif, "");
+                ui.end_row();
+
                 ui.label(t!("config_editor.translator_mode"));
                 ui.checkbox(&mut config.translator_mode, "");
                 ui.end_row();

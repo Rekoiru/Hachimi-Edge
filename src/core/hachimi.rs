@@ -329,6 +329,8 @@ pub struct Config {
     #[serde(default)]
     pub apply_atlas_workaround: bool,
     #[serde(default)]
+    pub disable_outdated_asset_notif: bool,
+    #[serde(default)]
     pub translator_mode: bool,
     #[serde(default)]
     pub disable_gui: bool,

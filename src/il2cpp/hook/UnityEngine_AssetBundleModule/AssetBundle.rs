@@ -1,15 +1,18 @@
-use std::sync::Mutex;
+use std::sync::{Mutex, atomic::{AtomicBool, Ordering}};
 
 use fnv::FnvHashMap;
 use once_cell::sync::Lazy;
+use rust_i18n::t;
 use widestring::Utf16Str;
 
-use crate::{core::{ext::Utf16StringExt, hachimi::AssetMetadata}, il2cpp::{
-    api::il2cpp_resolve_icall, ext::{Il2CppObjectExt, Il2CppStringExt}, hook::{
-        umamusume::{StoryParamChangeEffect, StoryRaceTextAsset, StoryTimelineData, TextDotData, TextRubyData},
-        Cute_UI_Assembly::AtlasReference,
-        UnityEngine_CoreModule::{GameObject, Texture2D, Object}
-    }, symbols::GCHandle, types::*
+use crate::{
+    core::{ext::Utf16StringExt, gui::Gui, hachimi::{AssetMetadata, Hachimi}},
+    il2cpp::{
+        api::il2cpp_resolve_icall, ext::{Il2CppObjectExt, Il2CppStringExt}, hook::{
+            umamusume::{StoryParamChangeEffect, StoryRaceTextAsset, StoryTimelineData, TextDotData, TextRubyData},
+            Cute_UI_Assembly::AtlasReference,
+            UnityEngine_CoreModule::{GameObject, Texture2D, Object}
+        }, symbols::GCHandle, types::*
 }};
 
 pub const ASSET_PATH_PREFIX: &str = "assets/_gallopresources/bundle/resources/";
@@ -25,6 +28,19 @@ impl RequestInfo {
 }
 pub static REQUEST_INFOS: Lazy<Mutex<FnvHashMap<usize, RequestInfo>>> = Lazy::new(|| Mutex::default());
 
+static MISMATCH_NOTIFIED: AtomicBool = AtomicBool::new(false);
+
+fn notify_mismatch() {
+    if Hachimi::instance().config.load().disable_outdated_asset_notif {
+        return;
+    }
+    if !MISMATCH_NOTIFIED.swap(true, Ordering::Relaxed) {
+        if let Some(mutex) = Gui::instance() {
+            mutex.lock().unwrap().show_notification(&t!("notification.asset_mismatch"));
+        }
+    }
+}
+
 pub fn check_asset_bundle_name(this: *mut Il2CppObject, metadata: &AssetMetadata) -> bool {
     if let Some(meta_bundle_name) = &metadata.bundle_name {
         let name_ptr = Object::get_name(this);
@@ -35,6 +51,7 @@ pub fn check_asset_bundle_name(this: *mut Il2CppObject, metadata: &AssetMetadata
                     return true;
                 } else {
                     warn!("[{}] Expected bundle {}, got {}", logical_name, meta_bundle_name, real_hash);
+                    notify_mismatch();
                     return false;
                 }
             }
