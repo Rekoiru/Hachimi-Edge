@@ -218,6 +218,16 @@ impl Hachimi {
     }
 
     pub fn on_dlopen(&self, filename: &str, handle: usize) -> bool {
+        let filename_lower = filename.to_lowercase();
+        #[cfg(target_os = "windows")]
+        if filename_lower.contains("libnative.dll") {
+            crate::il2cpp::sql::hook_sqlite(&self.interceptor, handle);
+        }
+        #[cfg(target_os = "android")]
+        if filename_lower.contains("libnative.so") {
+            crate::il2cpp::sql::hook_sqlite(&self.interceptor, handle);
+        }
+
         // Prevent double initialization
         if self.hooking_finished.load(atomic::Ordering::Relaxed) { return false; }
 

@@ -1,10 +1,84 @@
-use std::sync::atomic::{self, AtomicBool};
+use std::sync::{atomic::{self, AtomicBool, Ordering}, Mutex, RwLock};
 use fnv::{FnvHashMap, FnvHashSet};
 use sqlparser::ast;
+use once_cell::sync::Lazy;
 use crate::{
-    core::{utils::{get_masterdb_path}, Hachimi},
+    core::{utils::{get_data_path, get_masterdb_path}, Hachimi, Interceptor},
     il2cpp::{ext::{StringExt, Il2CppStringExt}, hook::LibNative_Runtime::Sqlite3::{Connection, Query}, types::{Il2CppObject, Il2CppString}}
 };
+
+pub static RETRIEVED_RAW_KEY: Lazy<Mutex<Vec<u8>>> = Lazy::new(|| Mutex::new(Vec::new()));
+pub static AUTO_UNLOCK_NEXT_DB: AtomicBool = AtomicBool::new(false);
+pub static META_DATA: Lazy<RwLock<MetaData>> = Lazy::new(|| RwLock::new(MetaData::default()));
+
+static mut ORIG_SQLITE3_OPEN_V2: Option<extern "C" fn(*const i8, *mut *mut std::ffi::c_void, i32, *const i8) -> i32> = None;
+static mut ORIG_SQLITE3_KEY: Option<extern "C" fn(*mut std::ffi::c_void, *const std::ffi::c_void, i32) -> i32> = None;
+
+extern "C" fn sqlite3_open_v2_hook(filename: *const i8, pp_db: *mut *mut std::ffi::c_void, flags: i32, z_vfs: *const i8) -> i32 {
+    let result = unsafe { ORIG_SQLITE3_OPEN_V2.unwrap()(filename, pp_db, flags, z_vfs) };
+    if result == 0 && !pp_db.is_null() {
+        if AUTO_UNLOCK_NEXT_DB.swap(false, Ordering::Relaxed) {
+            let raw_key = RETRIEVED_RAW_KEY.lock().unwrap();
+            if !raw_key.is_empty() {
+                let db_ptr = unsafe { *pp_db };
+                unsafe { ORIG_SQLITE3_KEY.unwrap()(db_ptr, raw_key.as_ptr() as *const std::ffi::c_void, raw_key.len() as i32) };
+            }
+        }
+    }
+    result
+}
+
+extern "C" fn sqlite3_key_hook(db: *mut std::ffi::c_void, p_key: *const std::ffi::c_void, n_key: i32) -> i32 {
+    if !p_key.is_null() {
+        let mut raw_guard = RETRIEVED_RAW_KEY.lock().unwrap();
+        if raw_guard.is_empty() {
+            let key_bytes = unsafe { std::slice::from_raw_parts(p_key as *const u8, n_key as usize) };
+            *raw_guard = key_bytes.to_vec();
+        }
+    }
+    unsafe { ORIG_SQLITE3_KEY.unwrap()(db, p_key, n_key) }
+}
+
+pub fn hook_sqlite(interceptor: &Interceptor, handle: usize) {
+    #[cfg(target_os = "windows")]
+    unsafe {
+        use windows::Win32::System::LibraryLoader::GetProcAddress;
+        use windows::core::PCSTR;
+        let h_module = windows::Win32::Foundation::HMODULE(handle as _);
+        let open_addr = GetProcAddress(h_module, PCSTR("sqlite3_open_v2\0".as_ptr()));
+        let key_addr = GetProcAddress(h_module, PCSTR("sqlite3_key\0".as_ptr()));
+        if let Some(addr) = open_addr {
+            if let Ok(orig) = interceptor.hook(addr as usize, sqlite3_open_v2_hook as *const () as usize) {
+                ORIG_SQLITE3_OPEN_V2 = Some(std::mem::transmute(orig));
+            }
+        }
+        if let Some(addr) = key_addr {
+            if let Ok(orig) = interceptor.hook(addr as usize, sqlite3_key_hook as *const () as usize) {
+                ORIG_SQLITE3_KEY = Some(std::mem::transmute(orig));
+            }
+        }
+    }
+    #[cfg(target_os = "android")]
+    unsafe {
+        let handle_ptr = handle as *mut libc::c_void;
+        let open_sym = b"sqlite3_open_v2\0".as_ptr() as *const libc::c_char;
+        let key_sym = b"sqlite3_key\0".as_ptr() as *const libc::c_char;
+        let open_addr = libc::dlsym(handle_ptr, open_sym);
+        let key_addr = libc::dlsym(handle_ptr, key_sym);
+        if !open_addr.is_null() {
+            if let Ok(orig) = interceptor.hook(open_addr as usize, sqlite3_open_v2_hook as *const () as usize) {
+                ORIG_SQLITE3_OPEN_V2 = Some(std::mem::transmute(orig));
+                info!("Successfully hooked native sqlite3_open_v2 (Android)");
+            }
+        }
+        if !key_addr.is_null() {
+            if let Ok(orig) = interceptor.hook(key_addr as usize, sqlite3_key_hook as *const () as usize) {
+                ORIG_SQLITE3_KEY = Some(std::mem::transmute(orig));
+                info!("Successfully hooked native sqlite3_key (Android)");
+            }
+        }
+    }
+}
 
 // public API
 #[derive(Default)]
@@ -594,5 +668,70 @@ impl<'a> Iterator for BinaryOpIter<'a> {
 
             return Some(BinaryOpRef { left, op, right })
         }
+    }
+}
+
+#[derive(Default)]
+pub struct MetaData {
+    pub logical_name_to_hash: FnvHashMap<String, String>,
+}
+
+impl MetaData {
+    pub fn get_hash(logical_name: &str) -> Option<String> {
+        {
+            let meta_read = META_DATA.read().unwrap();
+            if !meta_read.logical_name_to_hash.is_empty() {
+                return meta_read.logical_name_to_hash.get(logical_name).cloned();
+            }
+        }
+        
+        let mut meta_write = META_DATA.write().unwrap();
+        if meta_write.logical_name_to_hash.is_empty() {
+            if RETRIEVED_RAW_KEY.lock().unwrap().is_empty() {
+                return None;
+            }
+            let loaded = Self::load_from_db();
+            meta_write.logical_name_to_hash = loaded.logical_name_to_hash;
+        }
+        meta_write.logical_name_to_hash.get(logical_name).cloned()
+    }
+
+    fn load_from_db() -> Self {
+        let mut logical_name_to_hash = FnvHashMap::default();
+        let meta_path = std::path::PathBuf::from(get_data_path()).join("meta");
+        let db_path_str = meta_path.to_string_lossy().to_string();
+        
+        let conn = Connection::new();
+        AUTO_UNLOCK_NEXT_DB.store(true, Ordering::Relaxed);
+        
+        if Connection::Open(conn, db_path_str.to_il2cpp_string(), std::ptr::null_mut(), std::ptr::null_mut(), 0) {
+            let sql = "SELECT n, h FROM a";
+            let query = Connection::Query(conn, sql.to_il2cpp_string());
+            
+            if !query.is_null() {
+                while Query::Step(query) {
+                    let path_ptr = Query::GetText(query, 0);
+                    let hash_ptr = Query::GetText(query, 1);
+                    
+                    if let (Some(path_str), Some(hash_str)) = (
+                        unsafe { path_ptr.as_ref() }.map(|s| s.as_utf16str().to_string()),
+                        unsafe { hash_ptr.as_ref() }.map(|s| s.as_utf16str().to_string()),
+                    ) {
+                        let logical_name = if let Some(idx) = path_str.rfind('/') {
+                            format!("{}.a", &path_str[idx + 1..])
+                        } else {
+                            format!("{}.a", path_str)
+                        };
+                        logical_name_to_hash.insert(logical_name, hash_str);
+                    }
+                }
+                Query::Dispose(query);
+            }
+            Connection::CloseDB(conn);
+        } else {
+            error!("Failed to open meta database at: {}", db_path_str);
+        }
+        
+        MetaData { logical_name_to_hash }
     }
 }
