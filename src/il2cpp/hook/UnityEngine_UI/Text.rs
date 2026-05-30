@@ -46,6 +46,9 @@ impl_addr_wrapper_fn!(get_text, GET_TEXT_ADDR, *mut Il2CppString, this: *mut Il2
 static mut SET_TEXT_ADDR: usize = 0;
 impl_addr_wrapper_fn!(set_text, SET_TEXT_ADDR, (), this: *mut Il2CppObject, value: *mut Il2CppString);
 
+static mut SET_SUPPORTRICHTEXT_ADDR: usize = 0;
+impl_addr_wrapper_fn!(set_supportRichText, SET_SUPPORTRICHTEXT_ADDR, (), this: *mut Il2CppObject, value: bool);
+
 static mut SET_ALIGNMENT_ADDR: usize = 0;
 impl_addr_wrapper_fn!(set_alignment, SET_ALIGNMENT_ADDR, (), this: *mut Il2CppObject, value: TextAnchor);
 
@@ -70,6 +73,7 @@ pub fn init(UnityEngine_UI: *const Il2CppImage) {
         SET_RESIZETEXTMAXSIZE_ADDR = get_method_addr(Text, c"set_resizeTextMaxSize", 1);
         GET_TEXT_ADDR = get_method_addr(Text, c"get_text", 0);
         SET_TEXT_ADDR = get_method_addr(Text, c"set_text", 1);
+        SET_SUPPORTRICHTEXT_ADDR = get_method_addr(Text, c"set_supportRichText", 1);
         SET_ALIGNMENT_ADDR = get_method_addr(Text, c"set_alignment", 1);
         GET_PREFERREDHEIGHT_ADDR = get_method_addr(Text, c"get_preferredHeight", 0);
     }
