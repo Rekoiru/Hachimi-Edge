@@ -97,7 +97,7 @@ pub fn on_LoadAsset(bundle: *mut Il2CppObject, this: *mut Il2CppObject, name: &U
         return;
     }
 
-    patch_asset(this, asset_info.data.as_ref());
+    patch_asset(this, asset_info.data.as_ref(), &base_path.to_string());
 }
 
 fn apply_key_multiply(
@@ -146,7 +146,7 @@ fn apply_key_add(
     }
 }
 
-pub fn patch_asset(this: *mut Il2CppObject, data_opt: Option<&AnRootData>) {
+pub fn patch_asset(this: *mut Il2CppObject, data_opt: Option<&AnRootData>, asset_name: &str) {
     /*** Texture set replacement ***/
     let param_group = get__meshParameterGroup(this);
     let Some(param_list) = IList::new(AnMeshParameterGroup::get__meshParameterList(param_group)) else {
@@ -208,19 +208,19 @@ pub fn patch_asset(this: *mut Il2CppObject, data_opt: Option<&AnRootData>) {
             }
 
             let Some(motion_param) = motion_param_list.get(*i) else {
-                warn!("motion param {} out of range (max {})", *i, motion_param_list.count());
+                warn!("[{}] motion param {} out of range (max {})", asset_name, *i, motion_param_list.count());
                 continue;
             };
 
             if !motion_param_data.text_param_list.is_empty() {
                 let Some(text_param_list) = IList::new(AnMotionParameter::get__textParamList(motion_param)) else {
-                    warn!("Failed to get text_param_list for motion param {}", *i);
+                    warn!("[{}] Failed to get text_param_list for motion param {}", asset_name, *i);
                      continue;
                  };
 
                 for (j, text_param_data) in motion_param_data.text_param_list.iter() {
                     let Some(text_param) = text_param_list.get(*j) else {
-                        warn!("text param {} of motion param {} out of range (max {})", *j, *i, text_param_list.count());
+                        warn!("[{}] text param {} of motion param {} out of range (max {})", asset_name, *j, *i, text_param_list.count());
                         continue;
                     };
 
@@ -256,13 +256,13 @@ pub fn patch_asset(this: *mut Il2CppObject, data_opt: Option<&AnRootData>) {
 
             if !motion_param_data.plane_param_list.is_empty() {
                 let Some(plane_param_list) = IList::new(AnMotionParameter::get__planeParamList(motion_param)) else {
-                    warn!("Failed to get plane_param_list for motion param {}", *i);
+                    warn!("[{}] Failed to get plane_param_list for motion param {}", asset_name, *i);
                     continue;
                 };
 
                 for (j, plane_param_data) in motion_param_data.plane_param_list.iter() {
                     let Some(plane_param) = plane_param_list.get(*j) else {
-                        warn!("plane param {} of motion param {} out of range (max {})", *j, *i, plane_param_list.count());
+                        warn!("[{}] plane param {} of motion param {} out of range (max {})", asset_name, *j, *i, plane_param_list.count());
                         continue;
                     };
 
@@ -294,13 +294,13 @@ pub fn patch_asset(this: *mut Il2CppObject, data_opt: Option<&AnRootData>) {
 
             if !motion_param_data.object_param_list.is_empty() {
                 let Some(object_param_list) = IList::new(AnMotionParameter::get__objectParamList(motion_param)) else {
-                    warn!("Failed to get object_param_list for motion param {}", *i);
+                    warn!("[{}] Failed to get object_param_list for motion param {}", asset_name, *i);
                     continue;
                 };
 
                 for (j, object_param_data) in motion_param_data.object_param_list.iter() {
                     let Some(object_param) = object_param_list.get(*j) else {
-                        warn!("object param {} of motion param {} out of range (max {})", *j, *i, object_param_list.count());
+                        warn!("[{}] object param {} of motion param {} out of range (max {})", asset_name, *j, *i, object_param_list.count());
                         continue;
                     };
 

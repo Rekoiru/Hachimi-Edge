@@ -47,7 +47,7 @@ pub fn on_LoadAsset(bundle: *mut Il2CppObject, this: *mut Il2CppObject, name: &U
 
     let root = GameObject::GetComponentInChildren(flash_prefab, AnRoot::type_object(), false);
     if !root.is_null() {
-        AnRoot::patch_asset(root, asset_info.data.map(|d| d.an_root).unwrap_or_default().as_ref());
+        AnRoot::patch_asset(root, asset_info.data.map(|d| d.an_root).unwrap_or_default().as_ref(), &base_path.to_string());
     }
 }
 

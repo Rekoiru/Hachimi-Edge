@@ -44,7 +44,7 @@ pub fn on_LoadAsset(_bundle: *mut Il2CppObject, this: *mut Il2CppObject, _name: 
                 let base_path = format!("uianimation/flash/{}/prefab/{}", category, prefab_name);
 
                 let asset_info: AssetInfo<AnRoot::AnRootData> = localized_data.load_asset_info(&base_path);
-                AnRoot::patch_asset(root, asset_info.data.as_ref());
+                AnRoot::patch_asset(root, asset_info.data.as_ref(), &base_path);
             }
         }
     }
