@@ -546,9 +546,17 @@ pub fn get_data_path() -> String {
             .join("umamusume_Data")
             .join("Persistent");
 
-        if game.region == Region::Japan && game.is_steam_release && jp_steam_data_path.exists() {
+        let dir_ok = |path: &std::path::Path| {
+            path.exists()
+                && std::fs::read_dir(path)
+                    .map(|mut d| d.next().is_some())
+                    .unwrap_or(false)
+                && path.join("master").join("master.mdb").exists()
+        };
+
+        if game.region == Region::Japan && game.is_steam_release && dir_ok(&jp_steam_data_path) {
             jp_steam_data_path.to_string_lossy().to_string()
-        } else if game.region == Region::Japan && !game.is_steam_release && new_jp_dmm_data_path.exists() {
+        } else if game.region == Region::Japan && !game.is_steam_release && dir_ok(&new_jp_dmm_data_path) {
             new_jp_dmm_data_path.to_string_lossy().to_string()
         } else {
             unsafe { (*Application::get_persistentDataPath()).as_utf16str() }.to_string()
