@@ -233,6 +233,51 @@ pub fn get_screen_dimensions(mut env: JNIEnv) -> (i32, i32) {
     (width, height)
 }
 
+pub fn set_audio_capture_policy_all() {
+    let vm = java_vm().expect("JavaVM not initialized");
+    let mut env = vm.attach_current_thread().expect("Failed to attach thread");
+
+    let result = (|| -> jni::errors::Result<()> {
+        let api_level = get_device_api_level(env.get_native_interface());
+        if api_level < 29 {
+            info!("setAllowedCapturePolicy ignored: API level {} is below 29", api_level);
+            return Ok(());
+        }
+
+        let activity = get_activity(unsafe { env.unsafe_clone() })
+            .ok_or(jni::errors::Error::JavaException)?;
+
+        let context_class = env.find_class("android/content/Context")?;
+        let audio_service_str = env.get_static_field(context_class, "AUDIO_SERVICE", "Ljava/lang/String;")?.l()?;
+
+        let audio_manager = env.call_method(
+            &activity, 
+            "getSystemService", 
+            "(Ljava/lang/String;)Ljava/lang/Object;", 
+            &[JValue::from(&audio_service_str)]
+        )?.l()?;
+
+        if audio_manager.is_null() {
+            return Err(jni::errors::Error::JavaException);
+        }
+
+        let allow_capture_by_all: i32 = 1;
+        env.call_method(
+            &audio_manager, 
+            "setAllowedCapturePolicy", 
+            "(I)V", 
+            &[JValue::Int(allow_capture_by_all)]
+        )?;
+
+        info!("Successfully set AudioManager capture policy to ALLOW_CAPTURE_BY_ALL");
+        Ok(())
+    })();
+
+    if let Err(e) = result {
+        info!("JNI Audio Error: {:?}", e);
+    }
+}
+
 pub fn get_game_dir() -> PathBuf {
     let package_name = game_impl::get_package_name();
     game_impl::get_data_dir(&package_name)
