@@ -73,6 +73,7 @@ pub mod TweenAnimationTimelineData;
 pub mod TweenAnimationTimelineSheetData;
 pub mod StoryParamChangeEffect;
 pub mod DialogSupportCardDetail;
+pub mod DialogOptionHome;
 
 #[cfg(target_os = "windows")]
 pub mod SceneManager;
@@ -157,6 +158,7 @@ pub fn init() {
     TweenAnimationTimelineSheetData::init(image);
     StoryParamChangeEffect::init(image);
     DialogSupportCardDetail::init(image);
+    DialogOptionHome::init(image);
     
     #[cfg(target_os = "windows")]
     {

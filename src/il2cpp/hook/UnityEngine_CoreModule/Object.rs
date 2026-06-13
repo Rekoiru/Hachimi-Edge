@@ -28,6 +28,33 @@ impl_addr_wrapper_fn!(
     FindObjectsOfType, FINDOBJECTSOFTYPE_ADDR, Array<*mut Il2CppObject>, type_: *mut Il2CppObject, include_inactive: bool
 );
 
+static mut INTERNAL_CLONESINGLE_ADDR: usize = 0;
+impl_addr_wrapper_fn!(
+    Internal_CloneSingle, INTERNAL_CLONESINGLE_ADDR,
+    *mut Il2CppObject,
+    original: *mut Il2CppObject
+);
+
+static mut INTERNAL_CLONESINGLEWITHPARENT_ADDR: usize = 0;
+impl_addr_wrapper_fn!(
+    Internal_CloneSingleWithParent, INTERNAL_CLONESINGLEWITHPARENT_ADDR,
+    *mut Il2CppObject,
+    data: *mut Il2CppObject, parent: *mut Il2CppObject, world_position_stays: bool
+);
+
+type Internal_CloneSingleWithParentFn = extern "C" fn(data: *mut Il2CppObject, parent: *mut Il2CppObject, world_position_stays: bool) -> *mut Il2CppObject;
+extern "C" fn Internal_CloneSingleWithParent_hook(data: *mut Il2CppObject, parent: *mut Il2CppObject, world_position_stays: bool) -> *mut Il2CppObject {
+    let cloned = get_orig_fn!(Internal_CloneSingleWithParent_hook, Internal_CloneSingleWithParentFn)(data, parent, world_position_stays);
+    if !cloned.is_null() {
+        use crate::il2cpp::ext::Il2CppObjectExt;
+        let name = unsafe { &*cloned }.name();
+        if name.contains("DialogOptionHome") {
+            crate::il2cpp::hook::umamusume::DialogOptionHome::on_clone_dialog(cloned);
+        }
+    }
+    cloned
+}
+
 pub fn init(UnityEngine_CoreModule: *const Il2CppImage) {
     get_class_or_return!(UnityEngine_CoreModule, UnityEngine, Object);
 
@@ -42,5 +69,13 @@ pub fn init(UnityEngine_CoreModule: *const Il2CppImage) {
         FINDOBJECTSOFTYPE_ADDR = il2cpp_resolve_icall(
             c"UnityEngine.Object::FindObjectsOfType(System.Type,System.Boolean)".as_ptr()
         );
+        INTERNAL_CLONESINGLE_ADDR = il2cpp_resolve_icall(
+            c"UnityEngine.Object::Internal_CloneSingle(UnityEngine.Object)".as_ptr()
+        );
+        INTERNAL_CLONESINGLEWITHPARENT_ADDR = il2cpp_resolve_icall(
+            c"UnityEngine.Object::Internal_CloneSingleWithParent(UnityEngine.Object,UnityEngine.Object,System.Boolean)".as_ptr()
+        );
     }
+
+    unsafe { new_hook!(INTERNAL_CLONESINGLEWITHPARENT_ADDR, Internal_CloneSingleWithParent_hook); }
 }

@@ -1,6 +1,6 @@
 use crate::{
     il2cpp::{
-        api::{il2cpp_class_get_type, il2cpp_type_get_object},
+        api::{il2cpp_class_get_type, il2cpp_type_get_object, il2cpp_resolve_icall},
         symbols::get_method_addr,
         types::*
     }
@@ -31,6 +31,18 @@ impl_addr_wrapper_fn!(get_localScale, GET_LOCALSCALE_ADDR, Vector3_t, this: *mut
 static mut FIND_ADDR: usize = 0;
 impl_addr_wrapper_fn!(Find, FIND_ADDR, *mut Il2CppObject, this: *mut Il2CppObject, n: *mut Il2CppString);
 
+static mut SET_PARENT_ADDR: usize = 0;
+impl_addr_wrapper_fn!(
+    SetParent, SET_PARENT_ADDR, (),
+    this: *mut Il2CppObject, parent: *mut Il2CppObject, world_position_stays: bool
+);
+
+static mut SET_AS_FIRST_SIBLING_ADDR: usize = 0;
+impl_addr_wrapper_fn!(SetAsFirstSibling, SET_AS_FIRST_SIBLING_ADDR, (), this: *mut Il2CppObject);
+
+static mut SET_SIBLING_INDEX_ADDR: usize = 0;
+impl_addr_wrapper_fn!(SetSiblingIndex, SET_SIBLING_INDEX_ADDR, (), this: *mut Il2CppObject, index: i32);
+
 pub fn init(UnityEngine_CoreModule: *const Il2CppImage) {
     get_class_or_return!(UnityEngine_CoreModule, UnityEngine, Transform);
     unsafe {
@@ -41,5 +53,10 @@ pub fn init(UnityEngine_CoreModule: *const Il2CppImage) {
         GETCHILD_ADDR = get_method_addr(Transform, c"GetChild", 1);
         GET_LOCALSCALE_ADDR = get_method_addr(Transform, c"get_localScale", 0);
         FIND_ADDR = get_method_addr(Transform, c"Find", 1);
+        SET_PARENT_ADDR = il2cpp_resolve_icall(
+            c"UnityEngine.Transform::SetParent(UnityEngine.Transform,System.Boolean)".as_ptr()
+        );
+        SET_AS_FIRST_SIBLING_ADDR = get_method_addr(Transform, c"SetAsFirstSibling", 0);
+        SET_SIBLING_INDEX_ADDR = get_method_addr(Transform, c"SetSiblingIndex", 1);
     }
 }

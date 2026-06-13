@@ -104,6 +104,8 @@ tl_updater:
   warning: "Hindi gagana ang mga translations habang ina-update."
 
 config_editor:
+  hachimi_settings: "Mga Setting ng Hachimi"
+  open_settings: "Buksan ang mga Setting"
   general_tab: "\uf013 Pangkalahatan"
   gameplay_tab: "\uf11b Paglalaro"
   language: "Wika"

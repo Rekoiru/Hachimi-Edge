@@ -99,6 +99,9 @@ tl_updater:
   warning: "Bản dịch sẽ không hoạt động trong lúc đang cập nhật"
 
 config_editor:
+  adjust: "Điều chỉnh"
+  hachimi_settings: "Cài đặt Hachimi"
+  open_settings: "Mở cài đặt"
   title: "Chỉnh sửa cài đặt"
   general_tab: "\uf013 Chung"
   graphics_tab: "\uf03e Đồ họa"

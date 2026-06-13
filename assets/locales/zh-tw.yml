@@ -102,6 +102,9 @@ tl_updater:
     將無法使用翻譯功能。
 
 config_editor:
+  adjust: "調整"
+  hachimi_settings: "Hachimi 設置"
+  open_settings: "開啟設置"
   title: "設置編輯器"
   general_tab: "\uf013 一般"
   graphics_tab: "\uf03e 圖像"

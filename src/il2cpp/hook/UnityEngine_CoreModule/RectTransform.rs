@@ -19,8 +19,14 @@ impl_addr_wrapper_fn!(set_sizeDelta, SET_SIZEDELTA_ADDR, (), this: *mut Il2CppOb
 static mut GET_ANCHORMIN_ADDR: usize = 0;
 impl_addr_wrapper_fn!(get_anchorMin, GET_ANCHORMIN_ADDR, Vector2_t, this: *mut Il2CppObject);
 
+static mut SET_ANCHORMIN_ADDR: usize = 0;
+impl_addr_wrapper_fn!(set_anchorMin, SET_ANCHORMIN_ADDR, (), this: *mut Il2CppObject, value: Vector2_t);
+
 static mut GET_ANCHORMAX_ADDR: usize = 0;
 impl_addr_wrapper_fn!(get_anchorMax, GET_ANCHORMAX_ADDR, Vector2_t, this: *mut Il2CppObject);
+
+static mut SET_ANCHORMAX_ADDR: usize = 0;
+impl_addr_wrapper_fn!(set_anchorMax, SET_ANCHORMAX_ADDR, (), this: *mut Il2CppObject, value: Vector2_t);
 
 static mut GET_PIVOT_ADDR: usize = 0;
 impl_addr_wrapper_fn!(get_pivot, GET_PIVOT_ADDR, Vector2_t, this: *mut Il2CppObject);
@@ -43,7 +49,9 @@ pub fn init(UnityEngine_CoreModule: *const Il2CppImage) {
         GET_SIZEDELTA_ADDR = get_method_addr(RectTransform, c"get_sizeDelta", 0);
         SET_SIZEDELTA_ADDR = get_method_addr(RectTransform, c"set_sizeDelta", 1);
         GET_ANCHORMIN_ADDR = get_method_addr(RectTransform, c"get_anchorMin", 0);
+        SET_ANCHORMIN_ADDR = get_method_addr(RectTransform, c"set_anchorMin", 1);
         GET_ANCHORMAX_ADDR = get_method_addr(RectTransform, c"get_anchorMax", 0);
+        SET_ANCHORMAX_ADDR = get_method_addr(RectTransform, c"set_anchorMax", 1);
         GET_PIVOT_ADDR = get_method_addr(RectTransform, c"get_pivot", 0);
         SET_PIVOT_ADDR = get_method_addr(RectTransform, c"set_pivot", 1);
         GET_ANCHOREDPOSITION_ADDR = get_method_addr(RectTransform, c"get_anchoredPosition", 0);

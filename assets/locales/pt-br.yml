@@ -111,6 +111,9 @@ tl_updater:
   warning: "As traduções não irão funcionar enquanto uma atualização estiver sendo realizada"
 
 config_editor:
+  adjust: "Ajustar"
+  hachimi_settings: "Configurações do Hachimi"
+  open_settings: "Abrir configurações"
   title: "Editor de configurações"
   general_tab: "\uf013 Geral"
   graphics_tab: "\uf03e Gráficos"

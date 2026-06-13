@@ -109,6 +109,9 @@ tl_updater:
   warning: "翻译功能在更新期间将暂时不可用"
 
 config_editor:
+  adjust: "调整"
+  hachimi_settings: "Hachimi 设置"
+  open_settings: "打开设置"
   title: "配置编辑器"
   general_tab: "\uf013 常规"
   graphics_tab: "\uf03e 图形"

@@ -19,11 +19,20 @@ impl_addr_wrapper_fn!(SetSimpleOneButtonMessage, SETSIMPLEONEBUTTONMESSAGE_ADDR,
     close_text_id: i32, dialog_form_type: FormType
 );
 
+static mut SETSIMPLETWOBUTTONMESSAGE_ADDR: usize = 0;
+impl_addr_wrapper_fn!(SetSimpleTwoButtonMessage, SETSIMPLETWOBUTTONMESSAGE_ADDR, *mut Il2CppObject,
+    this: *mut Il2CppObject, header_text: *mut Il2CppString,
+    message: *mut Il2CppString, on_click_right_button: *mut Il2CppDelegate,
+    right_text_id: i32, left_text_id: i32,
+    on_click_left_button: *mut Il2CppDelegate, dialog_form_type: FormType
+);
+
 pub fn init(DialogCommon: *mut Il2CppClass) {
     find_nested_class_or_return!(DialogCommon, Data);
 
     unsafe {
         CLASS = Data;
         SETSIMPLEONEBUTTONMESSAGE_ADDR = get_method_addr(Data, c"SetSimpleOneButtonMessage", 5);
+        SETSIMPLETWOBUTTONMESSAGE_ADDR = get_method_addr(Data, c"SetSimpleTwoButtonMessage", 7);
     }
 }

@@ -109,6 +109,8 @@ tl_updater:
   warning: "Fitur translasi tidak bekerja saat progres pembaruan berjalan."
 
 config_editor:
+  hachimi_settings: "Pengaturan Hachimi"
+  open_settings: "Buka Pengaturan"
   title: "Editor Konfigurasi"
   general_tab: "\uf013 Umum"
   graphics_tab: "\uf03e Grafis"
