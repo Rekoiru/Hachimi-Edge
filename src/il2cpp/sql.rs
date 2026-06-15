@@ -1,10 +1,15 @@
-use std::{ptr, sync::atomic::{self, AtomicPtr}};
+use std::{ptr, sync::{atomic::{AtomicBool, Ordering}, Mutex, RwLock}};
 use fnv::{FnvHashMap, FnvHashSet};
 use sqlparser::ast;
+use once_cell::sync::Lazy;
 use crate::{
-    core::{utils::{get_masterdb_path, fit_text, wrap_fit_text}, Hachimi},
+    core::{utils::get_masterdb_path, Hachimi},
     il2cpp::{ext::{StringExt, Il2CppStringExt}, hook::LibNative_Runtime::Sqlite3::{Connection, Query}, types::{Il2CppObject, Il2CppString}}
 };
+
+pub static RETRIEVED_RAW_KEY: Lazy<Mutex<Vec<u8>>> = Lazy::new(|| Mutex::new(Vec::new()));
+pub static AUTO_UNLOCK_NEXT_DB: AtomicBool = AtomicBool::new(false);
+pub static META_DATA: Lazy<RwLock<MetaData>> = Lazy::new(|| RwLock::new(MetaData::default()));
 
 // public API
 #[derive(Default)]
@@ -129,17 +134,17 @@ impl SkillInfo {
 // All of this add column/param stuff could be simplified to two hash maps, but that's overkill.
 pub trait SelectQueryState {
     /// Adds a column to the query.
-    /// 
+    ///
     /// Implementers are expected to only track the index of columns that they need.
     fn add_column(&mut self, idx: i32, name: &str);
 
     /// Adds a placeholder parameter to the query (WHERE param = ?).
-    /// 
+    ///
     /// Index starts at 1.
     fn add_param(&mut self, idx: i32, name: &str);
 
     /// Bind an int value to a placeholder.
-    /// 
+    ///
     /// Index starts at 1.
     fn bind_int(&mut self, idx: i32, value: i32);
 
@@ -150,12 +155,12 @@ pub trait SelectQueryState {
 #[derive(Default)]
 struct Column {
     /// Index of the column in the SELECT statement.
-    /// 
+    ///
     /// Can be used to query the value later if needed.
     select_idx: Option<i32>,
 
     /// Index of the placeholder param for this column.
-    /// 
+    ///
     /// If this column's value is already binded as a param in the query, we won't need to query it later.
     param_idx: Option<i32>,
 
@@ -220,38 +225,8 @@ pub struct TextDataQuery {
     category: Column,
     index: Column
 }
-pub struct TextFormatting {
-    pub line_len: i32,
-    pub line_count: i32,
-    pub font_size: i32
-}
-
-#[derive(Default)]
-pub struct SkillTextFormatting {
-    pub name: Option<TextFormatting>,
-    pub desc: Option<TextFormatting>,
-    pub is_localized: bool
-}
-
-pub static TDQ_SKILL_TEXT_FORMAT:AtomicPtr<SkillTextFormatting> = AtomicPtr::new(ptr::null_mut());
 
 impl TextDataQuery {
-    pub fn with_skill_query(text_cfg: &SkillTextFormatting, callback: impl FnOnce()) {
-        let cfg_ptr = (text_cfg as *const SkillTextFormatting).cast_mut();
-        TDQ_SKILL_TEXT_FORMAT.store(cfg_ptr, atomic::Ordering::Relaxed);
-        callback();
-        TDQ_SKILL_TEXT_FORMAT.store(ptr::null_mut(), atomic::Ordering::Relaxed);
-    }
-
-    // Abuse static lifetime for our funky not-really static pointer because we like living on the Edge :>
-    fn requested_skill_format() -> Result<&'static mut SkillTextFormatting, ()> {
-        let cfg_ptr = TDQ_SKILL_TEXT_FORMAT.load(atomic::Ordering::Relaxed);
-        if cfg_ptr.is_null() {
-            return Err(());
-        }
-        Ok(unsafe{&mut *cfg_ptr})
-    }
-
     pub fn get_skill_name(index: i32) -> Option<*mut Il2CppString> {
         // Return None if skill name translation is disabled
         if Hachimi::instance().config.load().disable_skill_name_translation {
@@ -259,58 +234,19 @@ impl TextDataQuery {
         }
 
         let localized_data = Hachimi::instance().localized_data.load();
-        let text_opt = localized_data
-            .text_data_dict
+        localized_data.text_data_dict
             .get(&47)
-            .map(|c| c.get(&index))
-            .unwrap_or_default();
-
-        if let Some(text) = text_opt {
-            // Fit text if and as requested.
-            Self::requested_skill_format().ok()
-                .and_then(|cfg| {
-                    cfg.is_localized = true;
-                    cfg.name.as_ref()
-                })
-                .and_then(|name| { match name.line_count {
-                    1 => fit_text(text, name.line_len, name.font_size),
-                    _ => wrap_fit_text(text, name.line_len, name.line_count, name.font_size)
-                    }
-                })
-                .map_or_else(
-                    || Some(text.to_il2cpp_string()),
-                    |fitted| Some(fitted.to_il2cpp_string()),
-                )
-        }
-        else {
-            None
-        }
+            .and_then(|c| c.get(&index))
+            .map(|t| t.to_il2cpp_string())
     }
 
     pub fn get_skill_desc(index: i32) -> Option<*mut Il2CppString> {
         let localized_data = Hachimi::instance().localized_data.load();
-        let text_opt = localized_data
+        localized_data
             .text_data_dict
             .get(&48)
-            .map(|c| c.get(&index))
-            .unwrap_or_default();
-
-        if let Some(text) = text_opt {
-            // Fit text if and as requested.
-            Self::requested_skill_format().ok()
-                .and_then(|cfg| {
-                    cfg.is_localized = true;
-                    cfg.desc.as_ref()
-                })
-                .and_then(|desc| wrap_fit_text(text, desc.line_len, desc.line_count, desc.font_size))
-                .map_or_else(
-                    || Some(text.to_il2cpp_string()),
-                    |fitted| Some(fitted.to_il2cpp_string()),
-                )
-        }
-        else {
-            None
-        }
+            .and_then(|c| c.get(&index))
+            .map(|t| t.to_il2cpp_string())
     }
 }
 
@@ -344,7 +280,6 @@ impl SelectQueryState for TextDataQuery {
                 // specialized handlers
                 match category {
                     47 => return Self::get_skill_name(index),
-                    48 => return Self::get_skill_desc(index),
                     _ => ()
                 };
 
@@ -581,4 +516,214 @@ impl<'a> Iterator for BinaryOpIter<'a> {
             return Some(BinaryOpRef { left, op, right })
         }
     }
+}
+
+#[derive(Default)]
+pub struct MetaData {
+    pub logical_name_to_hash: FnvHashMap<String, String>,
+}
+
+impl MetaData {
+    pub fn get_hash(logical_name: &str) -> Option<String> {
+        {
+            let meta_read = META_DATA.read().unwrap();
+            if !meta_read.logical_name_to_hash.is_empty() {
+                return meta_read.logical_name_to_hash.get(logical_name).cloned();
+            }
+        }
+
+        let mut meta_write = META_DATA.write().unwrap();
+
+        if meta_write.logical_name_to_hash.is_empty() {
+            if RETRIEVED_RAW_KEY.lock().unwrap().is_empty() {
+                return None;
+            }
+            let loaded = Self::load_from_db();
+            meta_write.logical_name_to_hash = loaded.logical_name_to_hash;
+        }
+
+        meta_write.logical_name_to_hash.get(logical_name).cloned()
+    }
+
+    fn load_from_db() -> Self {
+        let mut logical_name_to_hash = FnvHashMap::default();
+
+        let meta_path = std::path::PathBuf::from(crate::core::utils::get_data_path()).join("meta");
+        let db_path_str = meta_path.to_string_lossy().to_string();
+
+        let conn = Connection::new();
+
+        AUTO_UNLOCK_NEXT_DB.store(true, Ordering::Relaxed);
+
+        if Connection::Open(conn, db_path_str.to_il2cpp_string(), std::ptr::null_mut(), std::ptr::null_mut(), 0) {
+            let sql = "SELECT n, h FROM a";
+            let query = Connection::Query(conn, sql.to_il2cpp_string());
+
+            if !query.is_null() {
+                while Query::Step(query) {
+                    let path_ptr = Query::GetText(query, 0);
+                    let hash_ptr = Query::GetText(query, 1);
+
+                    if let (Some(path_str), Some(hash_str)) = (
+                        unsafe { path_ptr.as_ref() }.map(|s| s.as_utf16str().to_string()),
+                        unsafe { hash_ptr.as_ref() }.map(|s| s.as_utf16str().to_string()),
+                    ) {
+                        let logical_name = if let Some(idx) = path_str.rfind('/') {
+                            format!("{}.a", &path_str[idx + 1..])
+                        } else {
+                            format!("{}.a", path_str)
+                        };
+
+                        logical_name_to_hash.insert(logical_name, hash_str);
+                    }
+                }
+                Query::Dispose(query);
+            }
+            Connection::CloseDB(conn);
+        } else {
+            error!("Failed to open meta database at: {}", db_path_str);
+        }
+
+        MetaData { logical_name_to_hash }
+    }
+}
+
+fn get_single_column_int(sql: &str) -> Vec<i32> {
+    let mut items = Vec::new();
+    let db_path = crate::core::utils::get_masterdb_path();
+    let conn = Connection::new();
+    if Connection::Open(conn, db_path.to_il2cpp_string(), std::ptr::null_mut(), std::ptr::null_mut(), 0) {
+        let query = Connection::Query(conn, sql.to_il2cpp_string());
+        if !query.is_null() {
+            while Query::Step(query) {
+                items.push(Query::GetInt(query, 0));
+            }
+            Query::Dispose(query);
+        }
+        Connection::CloseDB(conn);
+    }
+    items
+}
+
+pub fn get_all_chara_ids() -> Vec<i32> {
+    get_single_column_int("SELECT id FROM chara_data")
+}
+
+pub fn get_all_dress_ids() -> Vec<i32> {
+    get_single_column_int("SELECT id FROM dress_data")
+}
+
+pub fn get_all_music_ids() -> Vec<i32> {
+    get_single_column_int("SELECT music_id FROM live_data")
+}
+
+pub fn get_all_mob_ids() -> Vec<i32> {
+    get_single_column_int("SELECT mob_id FROM mob_data WHERE use_live = 1")
+}
+
+pub fn get_default_dress_ids() -> Vec<i32> {
+    get_single_column_int("SELECT id FROM dress_data WHERE (condition_type = 1 OR condition_type = 4 OR condition_type = 5) AND use_live_theater = 1 AND id < 999")
+}
+
+pub fn get_all_cards() -> Vec<(i32, i32)> {
+    let mut items = Vec::new();
+    let db_path = crate::core::utils::get_masterdb_path();
+    let conn = Connection::new();
+    if Connection::Open(conn, db_path.to_il2cpp_string(), std::ptr::null_mut(), std::ptr::null_mut(), 0) {
+        let query = Connection::Query(conn, "SELECT id, default_rarity FROM card_data WHERE id <= 999999".to_il2cpp_string());
+        if !query.is_null() {
+            while Query::Step(query) {
+                items.push((Query::GetInt(query, 0), Query::GetInt(query, 1)));
+            }
+            Query::Dispose(query);
+        }
+        Connection::CloseDB(conn);
+    }
+    items
+}
+
+pub fn get_master_text(category: i32, index: i32) -> Option<String> {
+    let db_path = crate::core::utils::get_masterdb_path();
+    let conn = Connection::new();
+    if Connection::Open(conn, db_path.to_il2cpp_string(), std::ptr::null_mut(), std::ptr::null_mut(), 0) {
+        let sql = format!("SELECT text FROM text_data WHERE \"category\" = {} AND \"index\" = {}", category, index);
+        let query = Connection::Query(conn, sql.to_il2cpp_string());
+        if !query.is_null() {
+            if Query::Step(query) {
+                let text_ptr = Query::GetText(query, 0);
+                if let Some(text) = unsafe { text_ptr.as_ref() }.map(|s| s.as_utf16str().to_string()) {
+                    Query::Dispose(query);
+                    Connection::CloseDB(conn);
+                    return Some(text);
+                }
+            }
+            Query::Dispose(query);
+        }
+        Connection::CloseDB(conn);
+    }
+    None
+}
+
+pub fn get_jobs_info(reward_id: i32) -> Option<(i32, i32)> {
+    let db_path = crate::core::utils::get_masterdb_path();
+    let conn = Connection::new();
+    if Connection::Open(conn, db_path.to_il2cpp_string(), std::ptr::null_mut(), std::ptr::null_mut(), 0) {
+        let sql = format!("SELECT place_id, genre_id FROM jobs_reward WHERE \"id\" = {}", reward_id);
+        let query = Connection::Query(conn, sql.to_il2cpp_string());
+        if !query.is_null() {
+            if Query::Step(query) {
+                let place_id = Query::GetInt(query, 0);
+                let genre_id = Query::GetInt(query, 1);
+                Query::Dispose(query);
+                Connection::CloseDB(conn);
+                return Some((place_id, genre_id));
+            }
+            Query::Dispose(query);
+        }
+        Connection::CloseDB(conn);
+    }
+    None
+}
+
+pub fn get_jobs_place_race_track_id(place_id: i32) -> Option<i32> {
+    let db_path = crate::core::utils::get_masterdb_path();
+    let conn = Connection::new();
+    if Connection::Open(conn, db_path.to_il2cpp_string(), std::ptr::null_mut(), std::ptr::null_mut(), 0) {
+        let sql = format!("SELECT race_track_id FROM jobs_place WHERE \"id\" = {}", place_id);
+        let query = Connection::Query(conn, sql.to_il2cpp_string());
+        if !query.is_null() {
+            if Query::Step(query) {
+                let track_id = Query::GetInt(query, 0);
+                Query::Dispose(query);
+                Connection::CloseDB(conn);
+                return Some(track_id);
+            }
+            Query::Dispose(query);
+        }
+        Connection::CloseDB(conn);
+    }
+    None
+}
+
+pub fn get_champions_resources() -> Vec<String> {
+    let mut items = Vec::new();
+    let db_path = crate::core::utils::get_masterdb_path();
+    let conn = Connection::new();
+    if Connection::Open(conn, db_path.to_il2cpp_string(), ptr::null_mut(), ptr::null_mut(), 0) {
+        let sql = "SELECT t.text FROM champions_schedule c LEFT OUTER JOIN text_data t on t.category = 206 AND t.\"index\" = c.id GROUP BY c.resource_id";
+        let query = Connection::Query(conn, sql.to_il2cpp_string());
+        if !query.is_null() {
+            while Query::Step(query) {
+                let text_ptr = Query::GetText(query, 0);
+                if let Some(text) = unsafe { text_ptr.as_ref() }.map(|s| s.as_utf16str().to_string()) {
+                    items.push(text);
+                } else {
+                    items.push(rust_i18n::t!("unknown").into_owned());
+                }
+            }
+            Query::Dispose(query);
+        }
+        Connection::CloseDB(conn);
+    }
+    items
 }

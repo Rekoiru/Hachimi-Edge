@@ -9,7 +9,7 @@ use jni::{
 
 use crate::{
     android::utils::{BACK_BUTTON_PRESSED, IS_IME_VISIBLE, get_activity, get_screen_dimensions},
-    core::{Error, Gui, Hachimi},
+    core::{gui, Error, Gui, Hachimi},
     il2cpp::symbols::Thread
 };
 
@@ -75,12 +75,10 @@ impl MultiTapState {
 }
 
 const CORNER_TAP_LIMIT: usize = 3;
-const VOLUME_TAP_LIMIT: usize = 2;
 const RESET_GUI_CONSUMING_TAP_LIMIT: usize = 4;
 const TAP_WINDOW_MS: i64 = 300;
 const CORNER_ZONE_RATIO: f32 = 0.12; // 12% screen size
 
-static VOLUME_UP_STATE: MultiTapState = MultiTapState::new();
 static CORNER_TAP_STATE: MultiTapState = MultiTapState::new();
 static TOGGLE_GAME_UI_TAP_STATE: MultiTapState = MultiTapState::new();
 static RESET_GUI_CONSUMING_STATE: MultiTapState = MultiTapState::new();
@@ -115,17 +113,7 @@ extern "C" fn nativeInjectEvent(mut env: JNIEnv, obj: JObject, input_event: JObj
 
         match key_code {
             keymap::KEYCODE_VOLUME_UP => {
-                VOLUME_UP_PRESSED.store(pressed, Ordering::Relaxed);
-
-                if pressed && repeat_count == 0 {
-                    if VOLUME_UP_STATE.register_tap(VOLUME_TAP_LIMIT, TAP_WINDOW_MS) {
-                        if Hachimi::instance().config.load().hide_ingame_ui_hotkey {
-                            Thread::main_thread().schedule(Gui::toggle_game_ui);
-                            return JNI_TRUE;
-                        }
-                    }
-                }
-
+                VOLUME_UP_PRESSED.store(pressed, Ordering::Relaxed);                
                 if pressed && VOLUME_DOWN_PRESSED.load(Ordering::Relaxed) {
                     if let Some(mut gui) = Gui::instance().map(|m| m.lock().unwrap()) {
                         gui.toggle_menu();
@@ -151,6 +139,14 @@ extern "C" fn nativeInjectEvent(mut env: JNIEnv, obj: JObject, input_event: JObj
             }
 
             _ => {
+                if gui::is_keybind_capture_active() {
+                    if pressed && repeat_count == 0 {
+                        let display = keymap::keycode_display_label(key_code);
+                        gui::report_keybind_capture(key_code, display);
+                        return JNI_TRUE;
+                    }
+                }
+
                 if pressed && key_code == Hachimi::instance().config.load().android.menu_open_key {
                     let Some(mut gui) = Gui::instance().map(|m| m.lock().unwrap()) else {
                         return get_orig_fn!(nativeInjectEvent, NativeInjectEventFn)(env, obj, input_event, extra_param);
@@ -171,30 +167,36 @@ extern "C" fn nativeInjectEvent(mut env: JNIEnv, obj: JObject, input_event: JObj
                 }
 
                 if Gui::is_consuming_input_atomic() {
-                    let Some(mut gui) = Gui::instance().map(|m| m.lock().unwrap()) else {
-                        return get_orig_fn!(nativeInjectEvent, NativeInjectEventFn)(env, obj, input_event, extra_param);
-                    };
+                    {
+                        let Some(mut gui) = Gui::instance().map(|m| m.lock().unwrap()) else {
+                            return get_orig_fn!(nativeInjectEvent, NativeInjectEventFn)(env, obj, input_event, extra_param);
+                        };
 
-                    if let Some(key) = keymap::get_key(key_code) {
-                        gui.input.events.push(egui::Event::Key {
-                            key,
-                            physical_key: None,
-                            pressed,
-                            repeat: false,
-                            modifiers: Default::default()
-                        });
-                    }
+                        if let Some(key) = keymap::get_key(key_code) {
+                            gui.input.events.push(egui::Event::Key {
+                                key,
+                                physical_key: None,
+                                pressed,
+                                repeat: false,
+                                modifiers: Default::default()
+                            });
+                        }
 
-                    if pressed {
-                        let c = env.call_method(&input_event, "getUnicodeChar", "()I", &[])
-                            .unwrap()
-                            .i()
-                            .unwrap();
-                        if c != 0 {
-                            if let Some(c) = char::from_u32(c as _) {
-                                gui.input.events.push(egui::Event::Text(c.to_string()));
+                        if pressed {
+                            let c = env.call_method(&input_event, "getUnicodeChar", "()I", &[])
+                                .unwrap()
+                                .i()
+                                .unwrap();
+                            if c != 0 {
+                                if let Some(c) = char::from_u32(c as _) {
+                                    gui.input.events.push(egui::Event::Text(c.to_string()));
+                                }
                             }
                         }
+                    }
+
+                    if !Gui::wants_input_atomic() {
+                        return get_orig_fn!(nativeInjectEvent, NativeInjectEventFn)(env, obj, input_event, extra_param);
                     }
                     return JNI_TRUE;
                 }
@@ -217,56 +219,58 @@ extern "C" fn nativeInjectEvent(mut env: JNIEnv, obj: JObject, input_event: JObj
             .f()
             .unwrap();
 
-        if !is_consuming {
-            if action_masked == ACTION_DOWN {
-                let mut current_w = SCREEN_WIDTH.load(Ordering::Relaxed);
-                let mut current_h = SCREEN_HEIGHT.load(Ordering::Relaxed);
+        
+        if action_masked == ACTION_DOWN {
+            let mut current_w = SCREEN_WIDTH.load(Ordering::Relaxed);
+            let mut current_h = SCREEN_HEIGHT.load(Ordering::Relaxed);
 
-                let mut corner_zone_size = if current_w > 0 && current_h > 0 {
-                    (current_w.min(current_h) as f32) * CORNER_ZONE_RATIO
-                } else {
-                    150.0
-                };
+            let mut corner_zone_size = if current_w > 0 && current_h > 0 {
+                (current_w.min(current_h) as f32) * CORNER_ZONE_RATIO
+            } else {
+                150.0
+            };
 
-                let out_of_bounds = real_x > current_w as f32 || real_y > current_h as f32;
-                let is_bottom_left_rotation = current_h > current_w && real_x < corner_zone_size && real_y < (current_h as f32 * 0.6);
-                let looks_wrong = is_bottom_left_rotation || (current_w > current_h && real_y < corner_zone_size && real_x < (current_w as f32 * 0.6));
+            let out_of_bounds = real_x > current_w as f32 || real_y > current_h as f32;
+            let is_bottom_left_rotation = current_h > current_w && real_x < corner_zone_size && real_y < (current_h as f32 * 0.6);
+            let looks_wrong = is_bottom_left_rotation || (current_w > current_h && real_y < corner_zone_size && real_x < (current_w as f32 * 0.6));
 
-                if current_h == 0 || out_of_bounds || looks_wrong {
-                    let (new_w, new_h) = get_screen_dimensions(unsafe { env.unsafe_clone() });
-                    SCREEN_WIDTH.store(new_w, Ordering::Relaxed);
-                    SCREEN_HEIGHT.store(new_h, Ordering::Relaxed);
-                    current_w = new_w;
-                    current_h = new_h;
+            if current_h == 0 || out_of_bounds || looks_wrong {
+                let (new_w, new_h) = get_screen_dimensions(unsafe { env.unsafe_clone() });
+                SCREEN_WIDTH.store(new_w, Ordering::Relaxed);
+                SCREEN_HEIGHT.store(new_h, Ordering::Relaxed);
+                current_w = new_w;
+                current_h = new_h;
 
-                    if current_w > 0 && current_h > 0 {
-                        corner_zone_size = (current_w.min(current_h) as f32) * CORNER_ZONE_RATIO;
-                    }
+                if current_w > 0 && current_h > 0 {
+                    corner_zone_size = (current_w.min(current_h) as f32) * CORNER_ZONE_RATIO;
                 }
+            }
 
-                // top left (toggle gui)
-                if !Hachimi::instance().config.load().disable_gui {
-                    if real_x < corner_zone_size && real_y < corner_zone_size {
-                        if CORNER_TAP_STATE.register_tap(CORNER_TAP_LIMIT, TAP_WINDOW_MS) {
-                            let Some(mut gui) = Gui::instance().map(|m| m.lock().unwrap()) else {
-                                return get_orig_fn!(nativeInjectEvent, NativeInjectEventFn)(env, obj, input_event, extra_param);
-                            };
-                            gui.toggle_menu();
-                            return JNI_TRUE;
-                        }
-                    }
-                }
-
-                // top right (toggle in-game ui)
-                if Hachimi::instance().config.load().hide_ingame_ui_hotkey {
-                    if real_x > (current_w as f32 - corner_zone_size) && real_y < corner_zone_size {
-                        if TOGGLE_GAME_UI_TAP_STATE.register_tap(CORNER_TAP_LIMIT, TAP_WINDOW_MS) {
-                            Thread::main_thread().schedule(Gui::toggle_game_ui);
-                            return JNI_TRUE;
-                        }
+            // top left (toggle gui)
+            if !Hachimi::instance().config.load().disable_gui {
+                if real_x < corner_zone_size && real_y < corner_zone_size {
+                    if CORNER_TAP_STATE.register_tap(CORNER_TAP_LIMIT, TAP_WINDOW_MS) {
+                        let Some(mut gui) = Gui::instance().map(|m| m.lock().unwrap()) else {
+                            return get_orig_fn!(nativeInjectEvent, NativeInjectEventFn)(env, obj, input_event, extra_param);
+                        };
+                        gui.toggle_menu();
+                        return JNI_TRUE;
                     }
                 }
             }
+
+            // top right (toggle in-game ui)
+            if Hachimi::instance().config.load().hide_ingame_ui_hotkey {
+                if real_x > (current_w as f32 - corner_zone_size) && real_y < corner_zone_size {
+                    if TOGGLE_GAME_UI_TAP_STATE.register_tap(CORNER_TAP_LIMIT, TAP_WINDOW_MS) {
+                        Thread::main_thread().schedule(Gui::toggle_game_ui);
+                        return JNI_TRUE;
+                    }
+                }
+            }
+        }
+
+        if !is_consuming {
             return get_orig_fn!(nativeInjectEvent, NativeInjectEventFn)(env, obj, input_event, extra_param);
         }
 
@@ -274,70 +278,84 @@ extern "C" fn nativeInjectEvent(mut env: JNIEnv, obj: JObject, input_event: JObj
             return get_orig_fn!(nativeInjectEvent, NativeInjectEventFn)(env, obj, input_event, extra_param);
         }
 
-        let Some(mut gui) = Gui::instance().map(|m| m.lock().unwrap()) else {
-            return get_orig_fn!(nativeInjectEvent, NativeInjectEventFn)(env, obj, input_event, extra_param);
-        };
+        let mut capture = Gui::wants_input_atomic();
 
-        if action_masked == ACTION_SCROLL {
-            let x = env.call_method(&input_event, "getAxisValue", "(I)F", &[AXIS_HSCROLL.into()])
-                .unwrap()
-                .f()
-                .unwrap();
-            let y = env.call_method(&input_event, "getAxisValue", "(I)F", &[AXIS_VSCROLL.into()])
-                .unwrap()
-                .f()
-                .unwrap();
-            gui.input.events.push(egui::Event::MouseWheel {
-                unit: egui::MouseWheelUnit::Point,
-                delta: Vec2::new(x, y) * SCROLL_AXIS_SCALE,
-                modifiers: egui::Modifiers::default(),
-            });
-        }
-        else {
-            // borrowing egui's touch phase enum
-            let phase = match action_masked {
-                ACTION_DOWN | ACTION_POINTER_DOWN => egui::TouchPhase::Start,
-                ACTION_MOVE | ACTION_HOVER_MOVE => egui::TouchPhase::Move,
-                ACTION_UP | ACTION_POINTER_UP => egui::TouchPhase::End,
-                _ => return JNI_TRUE
+        {
+            let Some(mut gui) = Gui::instance().map(|m| m.lock().unwrap()) else {
+                return get_orig_fn!(nativeInjectEvent, NativeInjectEventFn)(env, obj, input_event, extra_param);
             };
 
-            // dumb and simple, no multi touch
-            let tool_type = env.call_method(&input_event, "getToolType", "(I)I", &[0.into()])
-                .unwrap()
-                .i()
-                .unwrap();
+            let ppp = get_ppp(unsafe { env.unsafe_clone() }, &gui);
+            let pos = egui::Pos2 { x: real_x / ppp, y: real_y / ppp };
 
-            let ppp = get_ppp(env, &gui);
-            let x = real_x / ppp;
-            let y = real_y / ppp;
-            let pos = egui::Pos2 { x, y };
-
-            match phase {
-                egui::TouchPhase::Start => {
-                    gui.input.events.push(egui::Event::PointerMoved(pos));
-                    gui.input.events.push(egui::Event::PointerButton {
-                        pos,
-                        button: egui::PointerButton::Primary,
-                        pressed: true,
-                        modifiers: Default::default()
-                    });
-                },
-                egui::TouchPhase::Move => {
-                    gui.input.events.push(egui::Event::PointerMoved(pos));
-                },
-                egui::TouchPhase::End | egui::TouchPhase::Cancel => {
-                    gui.input.events.push(egui::Event::PointerButton {
-                        pos,
-                        button: egui::PointerButton::Primary,
-                        pressed: false,
-                        modifiers: Default::default()
-                    });
-                    if tool_type != TOOL_TYPE_MOUSE {
-                        gui.input.events.push(egui::Event::PointerGone);
+            if action_masked == ACTION_DOWN || action_masked == ACTION_POINTER_DOWN || action_masked == ACTION_SCROLL {
+                if let Some(layer) = gui.context.layer_id_at(pos) {
+                    if layer.order != egui::Order::Background {
+                        capture = true;
                     }
                 }
             }
+
+            if action_masked == ACTION_SCROLL {
+                let x = env.call_method(&input_event, "getAxisValue", "(I)F", &[AXIS_HSCROLL.into()])
+                    .unwrap()
+                    .f()
+                    .unwrap();
+                let y = env.call_method(&input_event, "getAxisValue", "(I)F", &[AXIS_VSCROLL.into()])
+                    .unwrap()
+                    .f()
+                    .unwrap();
+                gui.input.events.push(egui::Event::MouseWheel {
+                    unit: egui::MouseWheelUnit::Point,
+                    delta: Vec2::new(x, y) * SCROLL_AXIS_SCALE,
+                    modifiers: egui::Modifiers::default(),
+                });
+            }
+            else {
+                // borrowing egui's touch phase enum
+                let phase = match action_masked {
+                    ACTION_DOWN | ACTION_POINTER_DOWN => egui::TouchPhase::Start,
+                    ACTION_MOVE | ACTION_HOVER_MOVE => egui::TouchPhase::Move,
+                    ACTION_UP | ACTION_POINTER_UP => egui::TouchPhase::End,
+                    _ => return JNI_TRUE
+                };
+
+                // dumb and simple, no multi touch
+                let tool_type = env.call_method(&input_event, "getToolType", "(I)I", &[0.into()])
+                    .unwrap()
+                    .i()
+                    .unwrap();
+
+                match phase {
+                    egui::TouchPhase::Start => {
+                        gui.input.events.push(egui::Event::PointerMoved(pos));
+                        gui.input.events.push(egui::Event::PointerButton {
+                            pos,
+                            button: egui::PointerButton::Primary,
+                            pressed: true,
+                            modifiers: Default::default()
+                        });
+                    },
+                    egui::TouchPhase::Move => {
+                        gui.input.events.push(egui::Event::PointerMoved(pos));
+                    },
+                    egui::TouchPhase::End | egui::TouchPhase::Cancel => {
+                        gui.input.events.push(egui::Event::PointerButton {
+                            pos,
+                            button: egui::PointerButton::Primary,
+                            pressed: false,
+                            modifiers: Default::default()
+                        });
+                        if tool_type != TOOL_TYPE_MOUSE {
+                            gui.input.events.push(egui::Event::PointerGone);
+                        }
+                    }
+                }
+            }
+        }
+
+        if !capture {
+            return get_orig_fn!(nativeInjectEvent, NativeInjectEventFn)(env, obj, input_event, extra_param);
         }
 
         return JNI_TRUE;
