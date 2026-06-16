@@ -20,7 +20,7 @@ pub extern "C" fn GotoBlock(this: *mut Il2CppObject, block_id: i32, weaken_cy_sp
     if Hachimi::instance().config.load().enable_ipc {
         let mut guard = CURRENT.lock().unwrap();
 
-        if !(*guard).as_ref().is_none_or(|h| h.target() == this) {
+        if (*guard).as_ref().is_none_or(|h| h.target() != this) {
             *guard = Some(GCHandle::new_weak_ref(this, false));
         }
         LAST_BLOCK_ID.store(block_id, atomic::Ordering::Relaxed);
