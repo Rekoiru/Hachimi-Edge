@@ -236,8 +236,41 @@ fn add_to_layout(parent_rt: *mut Il2CppObject, go: *mut Il2CppObject, sibling: S
     }
 }
 
+pub unsafe fn probe_option_prefabs() {
+    let go_type = il2cpp_type_get_object(il2cpp_class_get_type(
+        crate::il2cpp::hook::UnityEngine_CoreModule::GameObject::class()
+    ));
+    
+    let paths = [
+        "ui/parts/outgame/option/partsoptionitemtitle",
+        "ui/parts/outgame/option/partsoptionitembutton",
+        "ui/parts/outgame/option/partsoptionitemtoggle",
+        "ui/parts/outgame/option/partsoptionitemslider",
+        "ui/parts/outgame/option/partsoptionitemdropdown",
+        "ui/parts/outgame/option/partsoptionitemselector",
+        "ui/parts/outgame/option/partsoptionitemselect",
+        "ui/parts/outgame/option/partsoptionitemcheck",
+        "ui/parts/outgame/option/partsoptionitemswitch",
+        "ui/parts/outgame/option/partsoptionitemradio",
+        "ui/parts/outgame/option/partsoptionitemonoff",
+        "ui/parts/outgame/option/partsoptionitemtoggle",
+        "ui/parts/outgame/option/partsoptionitemtoggle",
+        "ui/parts/outgame/option/partsoptionitemtogglevertical",
+        "ui/parts/outgame/option/partsoptioniteminfo",
+        "ui/parts/outgame/option/partsoptionitemsimple",
+        "ui/parts/outgame/option/partsoptionitemattention",
+        "ui/parts/outgame/option/optionsoundvolumeslider",
+    ];
+    
+    for path in &paths {
+        let _ = resources_load(path, go_type);
+    }
+}
+
 fn init_option_layout(parent_rt: *mut Il2CppObject) {
     unsafe {
+        
+        probe_option_prefabs();
 
         let go_type = il2cpp_type_get_object(il2cpp_class_get_type(GameObject::class()));
 
