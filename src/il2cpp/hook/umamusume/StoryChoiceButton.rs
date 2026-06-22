@@ -32,10 +32,10 @@ fn get__outlineText(this: *mut Il2CppObject) -> *mut Il2CppObject {
     get_field_value(this, unsafe { OUTLINE_TEXT_FIELD })
 }
 
-type SetupButtonFn = extern "C" fn(this: *mut Il2CppObject, index: i32, text_ptr: *mut Il2CppString, charaId: i32, iconId: i32, itemId: i32);
-extern "C" fn SetupButton(this: *mut Il2CppObject, index: i32, text_ptr: *mut Il2CppString, charaId: i32, iconId: i32, itemId: i32) {
+type SetupButtonFn = extern "C" fn(this: *mut Il2CppObject, index: i32, text_ptr: *mut Il2CppString, charaId: i32, charaId2: i32, iconId: i32, itemId: i32);
+extern "C" fn SetupButton(this: *mut Il2CppObject, index: i32, text_ptr: *mut Il2CppString, charaId: i32, charaId2: i32, iconId: i32, itemId: i32) {
     if this.is_null() { return; }
-    get_orig_fn!(SetupButton, SetupButtonFn)(this, index, text_ptr, charaId, iconId, itemId);
+    get_orig_fn!(SetupButton, SetupButtonFn)(this, index, text_ptr, charaId, charaId2, iconId, itemId);
     apply_multi_line_fix(this, text_ptr);
 }
 
@@ -133,7 +133,7 @@ fn reset_text_to_default(text_obj: *mut Il2CppObject) {
 pub fn init(umamusume: *const Il2CppImage) {
     get_class_or_return!(umamusume, Gallop, StoryChoiceButton);
 
-    let SetupButton_addr = get_method_addr(StoryChoiceButton, c"SetupButton", 5);
+    let SetupButton_addr = get_method_addr(StoryChoiceButton, c"SetupButton", 6);
     new_hook!(SetupButton_addr, SetupButton);
 
     let SetupText_addr = get_method_addr(StoryChoiceButton, c"SetupText", 1);
