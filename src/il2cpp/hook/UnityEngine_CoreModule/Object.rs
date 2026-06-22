@@ -48,7 +48,7 @@ extern "C" fn Internal_CloneSingleWithParent_hook(data: *mut Il2CppObject, paren
     if !cloned.is_null() {
         use crate::il2cpp::ext::Il2CppObjectExt;
         let name = unsafe { &*cloned }.name();
-        if name.contains("DialogOptionHome") {
+        if name == "DialogOptionHome" || name == "DialogOptionHome(Clone)" {
             crate::il2cpp::hook::umamusume::DialogOptionHome::on_clone_dialog(cloned);
         }
     }
