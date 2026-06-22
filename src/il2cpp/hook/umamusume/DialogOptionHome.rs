@@ -27,6 +27,7 @@ static mut SELECTED_SHADOW_RES: i32 = 0;
 static mut SELECTED_GRAPHICS_QUALITY: i32 = 0;
 static mut SELECTED_PHYSICS_MODE: i32 = 0;
 static mut SELECTED_BG_SEASON: i32 = 0;
+#[cfg(target_os = "windows")]
 static mut SELECTED_VSYNC: i32 = 0;
 static mut SELECTED_LANGUAGE: i32 = 0;
 static mut RESOURCES_LOAD_ADDR: usize = 0;
@@ -456,6 +457,7 @@ unsafe fn configure_text_element(text_obj: *mut Il2CppObject, text: &str, width:
     }
 }
 
+#[cfg(target_os = "windows")]
 fn create_option_2toggle(name: &str, title: &str, opt1: &str, opt2: &str, selected_index: i32) -> *mut Il2CppObject {
     unsafe {
         let go_type = il2cpp_type_get_object(il2cpp_class_get_type(GameObject::class()));
@@ -499,6 +501,7 @@ fn create_option_2toggle(name: &str, title: &str, opt1: &str, opt2: &str, select
     }
 }
 
+#[cfg(target_os = "windows")]
 fn create_option_3toggle(name: &str, title: &str, opt1: &str, opt2: &str, opt3: &str, selected_index: i32) -> *mut Il2CppObject {
     unsafe {
         let go_type = il2cpp_type_get_object(il2cpp_class_get_type(GameObject::class()));
@@ -1529,6 +1532,7 @@ unsafe fn add_slider(parent_rt: *mut Il2CppObject, name: &str, key: &str, value:
     }
 }
 
+#[cfg(target_os = "windows")]
 unsafe fn add_2toggle(parent_rt: *mut Il2CppObject, name: &str, key: &str, opt1_key: &str, opt2_key: &str, selected_index: i32) {
     let t = create_option_2toggle(
         name,
@@ -1542,6 +1546,7 @@ unsafe fn add_2toggle(parent_rt: *mut Il2CppObject, name: &str, key: &str, opt1_
     }
 }
 
+#[cfg(target_os = "windows")]
 unsafe fn add_3toggle(parent_rt: *mut Il2CppObject, name: &str, key: &str, opt1_key: &str, opt2_key: &str, opt3_key: &str, selected_index: i32) {
     let t = create_option_3toggle(
         name,
