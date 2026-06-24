@@ -106,7 +106,7 @@ pub fn process(input: &mut RawInput, zoom_factor: f32, umsg: u32, wparam: usize,
             InputResult::Character
         }
         WM_MOUSEWHEEL => {
-            let delta = (wparam >> 16) as i16 as f32 * 10. / WHEEL_DELTA as f32;
+            let delta = (wparam >> 16) as i16 as f32 * 3. / WHEEL_DELTA as f32;
 
             if wparam & MK_CONTROL.0 as usize != 0 {
                 input.events.push(Event::Zoom(if delta > 0. { 1.5 } else { 0.5 }));
@@ -121,7 +121,7 @@ pub fn process(input: &mut RawInput, zoom_factor: f32, umsg: u32, wparam: usize,
             }
         }
         WM_MOUSEHWHEEL => {
-            let delta = (wparam >> 16) as i16 as f32 * 10. / WHEEL_DELTA as f32;
+            let delta = (wparam >> 16) as i16 as f32 * 3. / WHEEL_DELTA as f32;
 
             if wparam & MK_CONTROL.0 as usize != 0 {
                 input.events.push(Event::Zoom(if delta > 0. { 1.5 } else { 0.5 }));
