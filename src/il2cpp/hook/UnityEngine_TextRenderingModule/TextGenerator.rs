@@ -5,8 +5,22 @@ use std::ptr::null_mut;
 use std::ops::Not;
 use fnv::FnvHashSet;
 use once_cell::sync::Lazy;
-use crate::{core::{template, Hachimi, hachimi::{CommonOverrides, SiblingOverride, TextPropertyOverrides}}, il2cpp::{api::il2cpp_class_is_assignable_from, ext::{Il2CppObjectExt, Il2CppStringExt, StringExt}, hook::UnityEngine_CoreModule::{GameObject, Object, RectTransform, Transform}, sql::{IS_SYSTEM_TEXT_QUERY, TDQ_IS_SKILL_LEARNING_QUERY}, types::*}};
-
+use crate::{
+    core::{
+        game::Region,
+        template, 
+        Hachimi, 
+        hachimi::{CommonOverrides, SiblingOverride, TextPropertyOverrides}
+    }, 
+    il2cpp::{
+        api::il2cpp_class_is_assignable_from, 
+        ext::{Il2CppObjectExt, Il2CppStringExt, StringExt}, 
+        hook::UnityEngine_CoreModule::{GameObject, Object, RectTransform, Transform}, 
+        sql::{IS_SYSTEM_TEXT_QUERY, TDQ_IS_SKILL_LEARNING_QUERY}, 
+        symbols::get_method_addr, 
+        types::*
+    }
+};
 static DUMPED_PATHS: Lazy<Mutex<FnvHashSet<String>>> = Lazy::new(|| Mutex::default());
 static SYSTEM_TEXT_COMPONENTS: Lazy<Mutex<FnvHashSet<i32>>> = Lazy::new(|| Mutex::default());
 
@@ -132,10 +146,34 @@ extern "C" fn PopulateWithErrors(
 
     let path = get_hierarchy_path_with_fallback(context, this);
 
-    if path.contains("PartsCharaMessage") {
+    if Hachimi::instance().game.region == Region::Japan && path.contains("PartsCharaMessage") {
         settings.horizontalOverflow = 0;
-        settings.verticalOverflow = 1;
-        settings.resizeTextMaxSize = 30;
+        settings.verticalOverflow = 0;
+        settings.resizeTextMaxSize = 32;
+        settings.resizeTextMinSize = 14;
+        settings.resizeTextForBestFit = true;
+    
+        if path.contains("PartsCharaMessage/ScaleAnim/Base/Message") && !context.is_null() {
+            unsafe {
+                let rt = (*context).transform();
+                if !rt.is_null() && il2cpp_class_is_assignable_from(RectTransform::class(), (*rt).klass()) {
+                
+                    let original_sz = RectTransform::get_sizeDelta(rt);
+                    // info!("[LayoutTweak] ORIGINAL Margin Offsets -> X: {}, Y: {}", original_sz.x, original_sz.y);
+
+                    // tweaking the box margins
+                    let expanded_margins = Vector2_t { x: -74.0, y: original_sz.y }; 
+
+                    let set_size_delta_addr = get_method_addr(RectTransform::class(), c"set_sizeDelta", 1);
+                    if set_size_delta_addr != 0 {
+                        // info!("[LayoutTweak] NEW Margin Offsets applied -> X: {}, Y: {}", expanded_margins.x, expanded_margins.y);
+
+                        let set_size_delta: extern "C" fn(*mut Il2CppObject, Vector2_t) = std::mem::transmute(set_size_delta_addr);
+                        set_size_delta(rt, expanded_margins);
+                    }
+                }
+            }
+        }
     }
 
     if !text_settings.font_overrides.is_empty() || !text_settings.text_properties_overrides.is_empty() {
@@ -206,12 +244,16 @@ extern "C" fn PopulateWithErrors(
         if config.text_debug && config.text_log {
             let hash = unsafe { (*str_).hash() };
             let orig_s = unsafe { (*str_).as_utf16str().to_string() };
+
+            let safe_orig = orig_s.replace('\n', "\\n").replace('\r', "\\r");
+            let safe_processed = processed_text.replace('\n', "\\n").replace('\r', "\\r");
+
             if hashed_text.is_some() {
                 info!("[Hashed] hash: {:X}, original: {}, processed: {}, size: {}, bf: {}, ho: {}, vo: {}, rt: {}, sf: {}, fs: {}, ta: {}, context: {}, extents: {:?}, pivot: {:?}",
-                    hash, orig_s, processed_text, settings.fontSize, settings.resizeTextForBestFit, settings.horizontalOverflow, settings.verticalOverflow, settings.richText, settings.scaleFactor, settings.fontStyle, settings.textAnchor, path, settings.generationExtents, settings.pivot);
+                    hash, safe_orig, safe_processed, settings.fontSize, settings.resizeTextForBestFit, settings.horizontalOverflow, settings.verticalOverflow, settings.richText, settings.scaleFactor, settings.fontStyle, settings.textAnchor, path, settings.generationExtents, settings.pivot);
             } else {
                 info!("[Generic] original: {}, processed: {}, size: {}, bf: {}, ho: {}, vo: {}, rt: {}, sf: {}, fs: {}, ta: {}, context: {}, extents: {:?}, pivot: {:?}",
-                    orig_s, processed_text, settings.fontSize, settings.resizeTextForBestFit, settings.horizontalOverflow, settings.verticalOverflow, settings.richText, settings.scaleFactor, settings.fontStyle, settings.textAnchor, path, settings.generationExtents, settings.pivot);
+                    safe_orig, safe_processed, settings.fontSize, settings.resizeTextForBestFit, settings.horizontalOverflow, settings.verticalOverflow, settings.richText, settings.scaleFactor, settings.fontStyle, settings.textAnchor, path, settings.generationExtents, settings.pivot);
             }
         }
         orig_fn(this, processed_text.to_il2cpp_string(), settings, context)
@@ -438,6 +480,7 @@ pub fn drain_pending_offsets() {
                     apply_common_overrides(transform, &action.properties, &mut pos_map, config.text_debug && config.text_position_debug);
                 }
                 ActionTarget::Sibling { anchor, name } => {
+                    if anchor.is_null() || !Object::IsNativeObjectAlive(anchor) { continue; }
                     if config.text_debug && config.text_position_debug {
                         debug!("[SiblingOffset] DRAIN SIBLING anchor={:#x} name={} searching for={}", anchor as usize, get_hierarchy_path(anchor), name);
                     }
@@ -701,7 +744,7 @@ impl template::Context for IgnoreTGFiltersContext {
 pub fn init(UnityEngine_TextRenderingModule: *const Il2CppImage) {
     get_class_or_return!(UnityEngine_TextRenderingModule, UnityEngine, TextGenerator);
 
-    let PopulateWithErrors_addr = crate::il2cpp::symbols::get_method_addr(TextGenerator, c"PopulateWithErrors", 3);
+    let PopulateWithErrors_addr = get_method_addr(TextGenerator, c"PopulateWithErrors", 3);
 
     new_hook!(PopulateWithErrors_addr, PopulateWithErrors);
 }
