@@ -1,7 +1,6 @@
 use crate::{
     il2cpp::{
-        api::{il2cpp_class_get_type, il2cpp_type_get_object, il2cpp_resolve_icall},
-        symbols::get_method_addr,
+        symbols::{get_method_addr, get_type_object_for_class},
         types::*
     }
 };
@@ -45,17 +44,17 @@ impl_addr_wrapper_fn!(SetSiblingIndex, SET_SIBLING_INDEX_ADDR, (), this: *mut Il
 
 pub fn init(UnityEngine_CoreModule: *const Il2CppImage) {
     get_class_or_return!(UnityEngine_CoreModule, UnityEngine, Transform);
+    
     unsafe {
         CLASS = Transform;
-        TYPE_OBJECT = il2cpp_type_get_object(il2cpp_class_get_type(Transform));
+        TYPE_OBJECT = get_type_object_for_class(Transform);
+        
         GET_PARENT_ADDR = get_method_addr(Transform, c"get_parent", 0);
         GET_CHILDCOUNT_ADDR = get_method_addr(Transform, c"get_childCount", 0);
         GETCHILD_ADDR = get_method_addr(Transform, c"GetChild", 1);
         GET_LOCALSCALE_ADDR = get_method_addr(Transform, c"get_localScale", 0);
         FIND_ADDR = get_method_addr(Transform, c"Find", 1);
-        SET_PARENT_ADDR = il2cpp_resolve_icall(
-            c"UnityEngine.Transform::SetParent(UnityEngine.Transform,System.Boolean)".as_ptr()
-        );
+        SET_PARENT_ADDR = get_method_addr(Transform, c"SetParent", 2);
         SET_AS_FIRST_SIBLING_ADDR = get_method_addr(Transform, c"SetAsFirstSibling", 0);
         SET_SIBLING_INDEX_ADDR = get_method_addr(Transform, c"SetSiblingIndex", 1);
     }

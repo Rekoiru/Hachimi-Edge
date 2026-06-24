@@ -1,8 +1,17 @@
-use crate::il2cpp::{api::il2cpp_resolve_icall, symbols::{get_method_addr, Array}, types::*};
+use crate::il2cpp::{
+    api::il2cpp_resolve_icall, 
+    symbols::{get_method_addr, get_type_object_for_class, Array}, 
+    types::*
+};
 
 static mut CLASS: *mut Il2CppClass = 0 as _;
 pub fn class() -> *mut Il2CppClass {
     unsafe { CLASS }
+}
+
+static mut TYPE_OBJECT: *mut Il2CppObject = 0 as _;
+pub fn type_object() -> *mut Il2CppObject {
+    unsafe { TYPE_OBJECT }
 }
 
 static mut DESTROY_ADDR: usize = 0;
@@ -60,22 +69,25 @@ pub fn init(UnityEngine_CoreModule: *const Il2CppImage) {
 
     unsafe {
         CLASS = Object;
+        TYPE_OBJECT = get_type_object_for_class(Object);
+        
         DESTROY_ADDR = get_method_addr(Object, c"Destroy", 1);
         SET_HIDEFLAGS_ADDR = get_method_addr(Object, c"set_hideFlags", 1);
         ISNATIVEOBJECTALIVE_ADDR = get_method_addr(Object, c"IsNativeObjectAlive", 1);
         GET_NAME_ADDR = get_method_addr(Object, c"get_name", 0);
         SET_NAME_ADDR = get_method_addr(Object, c"set_name", 1);
         GET_INSTANCEID_ADDR = get_method_addr(Object, c"GetInstanceID", 0);
-        FINDOBJECTSOFTYPE_ADDR = il2cpp_resolve_icall(
-            c"UnityEngine.Object::FindObjectsOfType(System.Type,System.Boolean)".as_ptr()
-        );
+        
+        FINDOBJECTSOFTYPE_ADDR = get_method_addr(Object, c"FindObjectsOfType", 2);
+        
         INTERNAL_CLONESINGLE_ADDR = il2cpp_resolve_icall(
             c"UnityEngine.Object::Internal_CloneSingle(UnityEngine.Object)".as_ptr()
         );
         INTERNAL_CLONESINGLEWITHPARENT_ADDR = il2cpp_resolve_icall(
             c"UnityEngine.Object::Internal_CloneSingleWithParent(UnityEngine.Object,UnityEngine.Object,System.Boolean)".as_ptr()
         );
-    }
 
-    unsafe { new_hook!(INTERNAL_CLONESINGLEWITHPARENT_ADDR, Internal_CloneSingleWithParent_hook); }
+        // Safe from data race warnings since it's entirely inside the layout block
+        new_hook!(INTERNAL_CLONESINGLEWITHPARENT_ADDR, Internal_CloneSingleWithParent_hook);
+    }
 }
