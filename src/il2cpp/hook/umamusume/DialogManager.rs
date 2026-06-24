@@ -28,7 +28,7 @@ pub fn single_button_message(title: &str, message: &str, typ: FormType) {
         title.to_il2cpp_string(),
         message.to_il2cpp_string(),
         null_mut(),
-        TextId::from_name("Common0007"),
+        TextId::from_name("Common0007"), // Close
         typ
     );
     PushDialog(dialog_data);
