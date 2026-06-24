@@ -1,6 +1,15 @@
 use std::sync::atomic::Ordering;
 
-use crate::{core::Hachimi, il2cpp::{api::{il2cpp_class_get_type, il2cpp_type_get_object}, ext::LocalizedDataExt, hook::{UnityEngine_TextRenderingModule::TextGenerator::mark_as_system_text_component, UnityEngine_UI::Text}, sql::IS_SYSTEM_TEXT_QUERY, symbols::get_method_addr, types::*}};
+use crate::{
+    core::{game::Region, Hachimi}, 
+    il2cpp::{
+        ext::LocalizedDataExt, 
+        hook::{UnityEngine_TextRenderingModule::TextGenerator::mark_as_system_text_component, UnityEngine_UI::Text}, 
+        sql::IS_SYSTEM_TEXT_QUERY, 
+        symbols::{get_method_addr, get_type_object_for_class}, 
+        types::*
+    }
+};
 
 static mut TYPE_OBJECT: *mut Il2CppObject = 0 as _;
 pub fn type_object() -> *mut Il2CppObject {
@@ -75,19 +84,22 @@ extern "C" fn SetTextWithLineHeadWrapWithColorTag(this: *mut Il2CppObject, str: 
 
 pub fn init(umamusume: *const Il2CppImage) {
     get_class_or_return!(umamusume, Gallop, TextCommon);
+
     let Awake_addr = get_method_addr(TextCommon, c"Awake", 0);
     new_hook!(Awake_addr, Awake);
 
-    let SetSystemTextWithLineHeadWrap_addr = get_method_addr(TextCommon, c"SetSystemTextWithLineHeadWrap", 2);
-    new_hook!(SetSystemTextWithLineHeadWrap_addr, SetSystemTextWithLineHeadWrap);
+    if Hachimi::instance().game.region == Region::Japan {
+        let SetSystemTextWithLineHeadWrap_addr = get_method_addr(TextCommon, c"SetSystemTextWithLineHeadWrap", 2);
+        new_hook!(SetSystemTextWithLineHeadWrap_addr, SetSystemTextWithLineHeadWrap);
 
-    let SetTextWithLineHeadWrap_addr = get_method_addr(TextCommon, c"SetTextWithLineHeadWrap", 2);
-    new_hook!(SetTextWithLineHeadWrap_addr, SetTextWithLineHeadWrap);
+        let SetTextWithLineHeadWrap_addr = get_method_addr(TextCommon, c"SetTextWithLineHeadWrap", 2);
+        new_hook!(SetTextWithLineHeadWrap_addr, SetTextWithLineHeadWrap);
 
-    let SetTextWithLineHeadWrapWithColorTag_addr = get_method_addr(TextCommon, c"SetTextWithLineHeadWrapWithColorTag", 2);
-    new_hook!(SetTextWithLineHeadWrapWithColorTag_addr, SetTextWithLineHeadWrapWithColorTag);
+        let SetTextWithLineHeadWrapWithColorTag_addr = get_method_addr(TextCommon, c"SetTextWithLineHeadWrapWithColorTag", 2);
+        new_hook!(SetTextWithLineHeadWrapWithColorTag_addr, SetTextWithLineHeadWrapWithColorTag);
+    }
 
     unsafe {
-        TYPE_OBJECT = il2cpp_type_get_object(il2cpp_class_get_type(TextCommon));
+        TYPE_OBJECT = get_type_object_for_class(TextCommon);
     }
 }
