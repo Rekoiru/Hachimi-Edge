@@ -1,5 +1,5 @@
 pub mod Texture2D;
-mod Resources;
+pub mod Resources;
 pub mod Sprite;
 pub mod Object;
 pub mod Application;

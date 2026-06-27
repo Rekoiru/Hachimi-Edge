@@ -18,7 +18,7 @@ use chrono::{Utc, Datelike};
 use crate::il2cpp::{
     ext::StringExt,
     hook::{
-        umamusume::{CameraData::ShadowResolution, CySpringController::SpringUpdateMode, GameSystem, GraphicSettings::{GraphicsQuality, MsaaQuality}, Localize, TimeUtil::BgSeason},
+        umamusume::{CameraData::ShadowResolution, CySpringController::SpringUpdateMode, Director, GameSystem, GraphicSettings::{GraphicsQuality, MsaaQuality}, Localize, TimeUtil::BgSeason, SceneManager as UmaSceneManager},
         UnityEngine_CoreModule::{Application, Texture::AnisoLevel}
     },
     symbols::Thread
@@ -39,6 +39,7 @@ use super::{
     game::Region,
     hachimi::{self, Language, REPO_PATH, WEBSITE_URL},
     http::{ureq_config, AsyncRequest},
+    live_utils,
     tl_repo::{self, RepoInfo, LocalRepoInfo},
     utils::{self, get_localized_string, SendPtr},
     Hachimi
@@ -91,6 +92,9 @@ pub fn set_menu_width(width: f32) {
     }
 }
 
+#[cfg(target_os = "windows")]
+static PENDING_TITLE: Mutex<Option<Option<String>>> = Mutex::new(None);
+
 static REMOVING_TLREPO: atomic::AtomicBool = atomic::AtomicBool::new(false);
 static REMOVED_TLREPO_ID: atomic::AtomicU32 = atomic::AtomicU32::new(u32::MAX);
 
@@ -138,6 +142,7 @@ static INSTANCE: OnceCell<Mutex<Gui>> = OnceCell::new();
 pub static IS_CONSUMING_INPUT: AtomicBool = AtomicBool::new(false);
 pub static WANTS_INPUT: AtomicBool = AtomicBool::new(false);
 pub static IS_LIVE_SCENE: AtomicBool = AtomicBool::new(false);
+pub static IS_LIVE_SLIDER_ACTIVE: AtomicBool = AtomicBool::new(false);
 static DISABLED_GAME_UIS: Lazy<Mutex<FnvHashSet<SendPtr>>> =
     Lazy::new(|| Mutex::new(FnvHashSet::default()));
 static PLUGIN_MENU_ITEMS: Lazy<Mutex<Vec<PluginMenuItem>>> = Lazy::new(|| Mutex::new(Vec::new()));
@@ -772,90 +777,105 @@ impl Gui {
     }
 
     fn run_live_slider(&mut self, ctx: &egui::Context) {
-        let config = crate::core::Hachimi::instance().config.load();
+        if !IS_LIVE_SCENE.load(atomic::Ordering::Acquire) {
+            return;
+        }
+
+        let config = Hachimi::instance().config.load();
 
         use crate::il2cpp::{ext::Il2CppStringExt, hook::UnityEngine_CoreModule::{SceneManager, Scene}};
+
+        let sm = UmaSceneManager::instance();
+        let in_photo_mode = if !sm.is_null() {
+            let photo_check = UmaSceneManager::get_PhotoCheckObject(sm);
+            let photo_library = UmaSceneManager::get_PhotoLibraryObject(sm);
+            !photo_check.is_null() || !photo_library.is_null()
+        } else {
+            false
+        };
+        if in_photo_mode {
+            return;
+        }
+
         let scene = SceneManager::GetActiveScene();
         let name_ptr = Scene::GetNameInternal(scene.handle);
         let scene_name = if name_ptr.is_null() { String::new() } else { unsafe { (*name_ptr).as_utf16str().to_string() } };
 
         if scene_name != "Live" {
+            if IS_LIVE_SLIDER_ACTIVE.load(atomic::Ordering::Acquire) {
+                ctx.input(|_i| {});
+            }
             IS_LIVE_SCENE.store(false, atomic::Ordering::Release);
+            IS_LIVE_SLIDER_ACTIVE.store(false, atomic::Ordering::Release);
+            live_utils::reset_live_drag_state();
             return;
         }
 
-        unsafe {
-            let image = match crate::il2cpp::symbols::get_assembly_image(c"umamusume.dll") {
-                Ok(img) => img,
-                Err(_) => return
-            };
-            let dir_class = match crate::il2cpp::symbols::get_class(image, c"Gallop.Live", c"Director") {
-                Ok(k) => k,
-                Err(_) => return
-            };
-            let director = crate::il2cpp::symbols::SingletonLike::new(dir_class).unwrap().instance();
-            if director.is_null() { return; }
+        IS_LIVE_SCENE.store(true, atomic::Ordering::Release);
 
-            let get_current_time_addr = crate::il2cpp::symbols::get_method_addr_cached(dir_class, c"get_LiveCurrentTime", 0);
-            let get_total_time_addr = crate::il2cpp::symbols::get_method_addr_cached(dir_class, c"get_LiveTotalTime", 0);
-            if get_current_time_addr == 0 || get_total_time_addr == 0 { return; }
+        let director = Director::instance();
+        if director.is_null() { return; }
 
-            let get_current_time: extern "C" fn(*mut crate::il2cpp::types::Il2CppObject) -> f32 = std::mem::transmute(get_current_time_addr);
-            let get_total_time: extern "C" fn(*mut crate::il2cpp::types::Il2CppObject) -> f32 = std::mem::transmute(get_total_time_addr);
+        let mut current = Director::get_LiveCurrentTime(director);
+        let total = Director::get_LiveTotalTime(director);
+        if total <= 0.0 { return; }
 
-            let mut current = get_current_time(director);
-            let total = get_total_time(director);
-            if total <= 0.0 { return; }
+        if config.live_playback_loop && current >= total - 0.1 {
+            live_utils::move_live_playback(0.0);
+            current = 0.0;
+        }
 
-            if config.live_playback_loop && current >= total - 0.1 {
-                crate::core::live_utils::move_live_playback(0.0);
-                current = 0.0;
-            }
+        let is_paused = Director::is_live_paused();
+        if !config.live_slider_always_show && !is_paused {
+            IS_LIVE_SLIDER_ACTIVE.store(false, atomic::Ordering::Release);
+            return;
+        }
 
-            let is_pause_live_addr = crate::il2cpp::symbols::get_method_addr_cached(dir_class, c"IsPauseLive", 0);
-            if is_pause_live_addr != 0 {
-                let is_pause_live: extern "C" fn(*mut crate::il2cpp::types::Il2CppObject) -> bool = std::mem::transmute(is_pause_live_addr);
-                if !config.live_slider_always_show && !is_pause_live(director) { return; }
-            } else if !config.live_slider_always_show {
-                return;
-            }
+        IS_LIVE_SLIDER_ACTIVE.store(true, atomic::Ordering::Release);
 
-            let scale = get_scale(ctx);
-            egui::Area::new(egui::Id::new("live_slider_area"))
-                .anchor(egui::Align2::CENTER_BOTTOM, egui::vec2(0.0, -40.0 * scale))
-                .show(ctx, |ui| {
-                    egui::Frame::window(&ctx.style())
-                        .fill(egui::Color32::from_black_alpha(150))
-                        .inner_margin(egui::Margin::symmetric((16.0 * scale) as i8, (8.0 * scale) as i8))
-                        .corner_radius(10.0 * scale)
-                        .show(ui, |ui| {
-                            ui.set_width(ctx.content_rect().width() * 0.7);
-                            ui.horizontal(|ui| {
-                                let curr_m = (current / 60.0).floor() as i32;
-                                let curr_s = (current % 60.0).floor() as i32;
-                                let tot_m = (total / 60.0).floor() as i32;
-                                let tot_s = (total % 60.0).floor() as i32;
-                                ui.label(format!("{:02}:{:02} / {:02}:{:02}", curr_m, curr_s, tot_m, tot_s));
+        let scale = get_scale(ctx);
+        egui::Area::new(egui::Id::new("live_slider_area"))
+            .anchor(egui::Align2::CENTER_BOTTOM, egui::vec2(0.0, -40.0 * scale))
+            .show(ctx, |ui| {
+                egui::Frame::window(&ctx.style())
+                    .fill(egui::Color32::from_black_alpha(150))
+                    .inner_margin(egui::Margin::symmetric((16.0 * scale) as i8, (8.0 * scale) as i8))
+                    .corner_radius(10.0 * scale)
+                    .show(ui, |ui| {
+                        ui.set_width(ctx.content_rect().width() * 0.7);
+                        ui.horizontal(|ui| {
+                            let curr_m = (current / 60.0).floor() as i32;
+                            let curr_s = (current % 60.0).floor() as i32;
+                            let tot_m = (total / 60.0).floor() as i32;
+                            let tot_s = (total % 60.0).floor() as i32;
+                            ui.label(format!("{:02}:{:02} / {:02}:{:02}", curr_m, curr_s, tot_m, tot_s));
 
-                                let available_w = ui.available_width();
+                            let available_w = ui.available_width();
 
-                                ui.scope(|ui| {
-                                    ui.spacing_mut().slider_width = available_w - (16.0 * scale);
+                            ui.scope(|ui| {
+                                ui.spacing_mut().slider_width = available_w - (16.0 * scale);
 
-                                    let res = ui.add(
-                                        egui::Slider::new(&mut current, 0.0..=total)
-                                            .show_value(false)
-                                            .trailing_fill(true)
-                                    );
+                                let res = ui.add(
+                                    egui::Slider::new(&mut current, 0.0..=total)
+                                        .show_value(false)
+                                        .trailing_fill(true)
+                                );
 
-                                    if res.changed() {
-                                        crate::core::live_utils::move_live_playback(current);
-                                    }
-                                });
+                                if res.drag_started() {
+                                    live_utils::begin_live_drag();
+                                }
+
+                                if res.changed() {
+                                    live_utils::move_live_playback(current);
+                                }
+
+                                if res.drag_stopped() {
+                                    live_utils::end_live_drag();
+                                }
                             });
                         });
-                });
-        }
+                    });
+            });
     }
 
     pub fn run(&mut self) -> egui::FullOutput {
@@ -997,16 +1017,14 @@ impl Gui {
         let ctx = self.context.clone();
         self.run_live_slider(&ctx);
 
-        let has_interactive_widgets = IS_LIVE_SCENE.load(atomic::Ordering::Relaxed);
-
-        // Store this as an atomic value so the input thread can check it without locking the gui
-        IS_CONSUMING_INPUT.store(self.is_consuming_input() || has_interactive_widgets, atomic::Ordering::Relaxed);
+        // Store these as atomic values so the input thread can check them without locking the gui
+        IS_CONSUMING_INPUT.store(self.is_consuming_input(), atomic::Ordering::Release);
 
         WANTS_INPUT.store(
             self.context.wants_pointer_input() || 
             self.context.is_pointer_over_area() || 
-            self.context.wants_keyboard_input(), 
-            atomic::Ordering::Relaxed
+            self.context.wants_keyboard_input(),
+            atomic::Ordering::Release
         );
 
         self.context.end_pass()
@@ -1198,12 +1216,19 @@ impl Gui {
                                 ui.vertical(|ui| {
                                     ui.label(t!("config_editor.enable_smtc"));
                                 });
-                                if ui.checkbox(&mut self.config.windows.enable_smtc, "").changed() {
-                                    use crate::windows::smtc;
-                                    if self.config.windows.enable_smtc {
-                                        smtc::init(crate::windows::wnd_hook::get_target_hwnd());
-                                    } else {
-                                        smtc::unregister();
+                                let mut enable_smtc = hachimi.config.load().windows.enable_smtc;
+                                if ui.checkbox(&mut enable_smtc, "").changed() {
+                                    use crate::windows::{smtc, wnd_hook::get_target_hwnd};
+                                    let mut config = hachimi.config.load().as_ref().clone();
+                                    config.windows.enable_smtc = enable_smtc;
+                                    save_and_reload_config(config);
+                                    self.config.windows.enable_smtc = enable_smtc;
+                                    if UmaSceneManager::is_home_init() {
+                                        if enable_smtc {
+                                            smtc::init(get_target_hwnd());
+                                        } else {
+                                            smtc::unregister();
+                                        }
                                     }
                                 }
                             });
@@ -1636,15 +1661,15 @@ impl Gui {
 
     pub fn is_empty(&self) -> bool {
         !self.splash_visible && !self.menu_visible && !self.update_progress_visible &&
-        self.notifications.is_empty() && self.windows.is_empty() && !IS_LIVE_SCENE.load(atomic::Ordering::Relaxed)
+        self.notifications.is_empty() && self.windows.is_empty() && !IS_LIVE_SCENE.load(atomic::Ordering::Acquire)
     }
 
     pub fn is_consuming_input(&self) -> bool {
-        self.menu_visible || !self.windows.is_empty()
+        self.menu_visible || !self.windows.is_empty() || IS_LIVE_SLIDER_ACTIVE.load(atomic::Ordering::Acquire)
     }
 
     pub fn is_consuming_input_atomic() -> bool {
-        IS_CONSUMING_INPUT.load(atomic::Ordering::Relaxed)
+        IS_CONSUMING_INPUT.load(atomic::Ordering::Acquire)
     }
 
     pub fn set_consuming_input(&mut self, val: bool) {
@@ -1653,11 +1678,11 @@ impl Gui {
         }
 
         self.menu_visible = val;
-        IS_CONSUMING_INPUT.store(val, atomic::Ordering::Relaxed);
+        IS_CONSUMING_INPUT.store(val, atomic::Ordering::Release);
     }
 
     pub fn wants_input_atomic() -> bool {
-        WANTS_INPUT.load(atomic::Ordering::Relaxed)
+        WANTS_INPUT.load(atomic::Ordering::Acquire)
     }
 
     pub fn toggle_menu(&mut self) {
@@ -2201,6 +2226,7 @@ struct ConfigEditor {
     current_tab: ConfigEditorTab,
     search_term: String,
     champions_resources: Vec<String>,
+    champions_live_max_year: i32,
     font_color_options: Vec<String>,
     outline_size_options: Vec<String>,
     outline_color_options: Vec<String>,
@@ -2263,6 +2289,7 @@ impl ConfigEditor {
             current_tab: ConfigEditorTab::General,
             search_term: String::new(),
             champions_resources: crate::il2cpp::sql::get_champions_resources(),
+            champions_live_max_year: crate::il2cpp::sql::get_champions_live_max_year(),
             font_color_options: get_enum_options(c"FontColorType"),
             outline_size_options: get_enum_options(c"OutlineSizeType"),
             outline_color_options: get_enum_options(c"OutlineColorType"),
@@ -2878,7 +2905,7 @@ impl ConfigEditor {
                     Gui::run_combo(ui, "champions_live_resource_id", &mut config.champions_live_resource_id, &choices);
                     ui.end_row();
                     ui.label(t!("config_editor.champions_live_year"));
-                    ui.add(egui::DragValue::new(&mut config.champions_live_year).range(2021..=2030));
+                    ui.add(egui::DragValue::new(&mut config.champions_live_year).range(2022..=self.champions_live_max_year));
                     ui.end_row();
                 }
             }
@@ -3117,14 +3144,15 @@ impl Window for ConfigEditor {
         if save_clicked {
             #[cfg(target_os = "windows")]
             {
+                *PENDING_TITLE.lock().unwrap() = Some(self.config.windows.custom_title_name.clone());
                 use windows::{core::HSTRING, Win32::UI::WindowsAndMessaging::SetWindowTextW};
-                let title_clone = self.config.windows.custom_title_name.clone();
-                std::thread::spawn(move || {
-                    let hachimi = Hachimi::instance();
+                Thread::main_thread().schedule(move || {
                     let hwnd = crate::windows::wnd_hook::get_target_hwnd();
-                    if let Some(title) = title_clone {
-                        let _ = unsafe { SetWindowTextW(hwnd, &HSTRING::from(title.as_str())) };
+                    let title = PENDING_TITLE.lock().unwrap().take().flatten();
+                    if let Some(t) = title {
+                        let _ = unsafe { SetWindowTextW(hwnd, &HSTRING::from(t.as_str())) };
                     } else {
+                        let hachimi = Hachimi::instance();
                         let default_title = if hachimi.game.region == Region::Japan && hachimi.game.is_steam_release {
                             HSTRING::from("UmamusumePrettyDerby_Jpn")
                         } else {

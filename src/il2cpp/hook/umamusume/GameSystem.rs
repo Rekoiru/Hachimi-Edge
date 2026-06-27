@@ -32,7 +32,9 @@ pub fn on_game_initialized() {
     let hachimi = Hachimi::instance();
     let callbacks = hachimi.plugin_init_callbacks.lock().unwrap();
     for (callback, userdata) in callbacks.iter() {
-        let callback: unsafe extern "C" fn(*mut std::ffi::c_void) = unsafe { std::mem::transmute(*callback) };
+        let callback_ptr = *callback;
+        if callback_ptr == 0 { continue; }
+        let callback: unsafe extern "C" fn(*mut std::ffi::c_void) = unsafe { std::mem::transmute(callback_ptr) };
         unsafe { callback(*userdata as *mut std::ffi::c_void); }
     }
 }

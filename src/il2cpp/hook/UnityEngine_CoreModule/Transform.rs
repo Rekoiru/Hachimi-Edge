@@ -23,6 +23,14 @@ impl_addr_wrapper_fn!(get_childCount, GET_CHILDCOUNT_ADDR, i32, this: *mut Il2Cp
 static mut GETCHILD_ADDR: usize = 0;
 impl_addr_wrapper_fn!(GetChild, GETCHILD_ADDR, *mut Il2CppObject, this: *mut Il2CppObject, index: i32);
 
+// public Vector3 get_position() { }
+static mut GET_POSITION_ADDR: usize = 0;
+impl_addr_wrapper_fn!(get_position, GET_POSITION_ADDR, Vector3_t, this: *mut Il2CppObject);
+
+// public Void set_position(Vector3 value) { }
+static mut SET_POSITION_ADDR: usize = 0;
+impl_addr_wrapper_fn!(set_position, SET_POSITION_ADDR, (), this: *mut Il2CppObject, value: Vector3_t);
+
 pub fn init(UnityEngine_CoreModule: *const Il2CppImage) {
     get_class_or_return!(UnityEngine_CoreModule, UnityEngine, Transform);
 
@@ -31,5 +39,7 @@ pub fn init(UnityEngine_CoreModule: *const Il2CppImage) {
         GET_PARENT_ADDR = get_method_addr(Transform, c"get_parent", 0);
         GET_CHILDCOUNT_ADDR = get_method_addr(Transform, c"get_childCount", 0);
         GETCHILD_ADDR = get_method_addr(Transform, c"GetChild", 1);
+        GET_POSITION_ADDR = get_method_addr(Transform, c"get_position", 0);
+        SET_POSITION_ADDR = get_method_addr(Transform, c"set_position", 1);
     }
 }

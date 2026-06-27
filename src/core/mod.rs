@@ -31,6 +31,5 @@ pub mod plugin_api;
 pub mod updater;
 
 pub mod taskbar;
-pub mod criware;
 pub mod captions;
 pub mod live_utils;

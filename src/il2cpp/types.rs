@@ -2943,7 +2943,7 @@ impl std::ops::MulAssign<f32> for Vector2Int_t {
     }
 }
 #[repr(C)]
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone, Copy)]
 pub struct Vector3_t {
     pub x: f32,
     pub y: f32,
