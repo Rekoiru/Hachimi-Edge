@@ -67,6 +67,7 @@ notification:
   no_tl_updates: "No translation updates available."
   update_failed: "Update failed: %{reason}"
   update_completed: "Update completed."
+  mod_update_completed: "Addon update completed."
   errors_during_update: "%{count} errors occurred during update. Check logs for more info."
   checking_for_updates: "Checking for updates..."
   no_updates: "No updates available."
@@ -150,6 +151,7 @@ config_editor:
   skip_first_time_setup: "Skip first time setup"
   lazy_translation_updates: "Lazy translation updates"
   disable_auto_update_check: "Disable auto update check"
+  disable_mod_downloads: "Disable translation addons downloads"
   disable_translations: "Disable translations"
   enable_ipc: "Enable IPC"
   ipc_listen_all: "IPC listen all"
@@ -215,7 +217,9 @@ theme_editor:
 
 tl_update_dialog:
   title: "New update available"
+  title_mod: "Addon update available"
   content: "A new translation update is available (%{size}). Do you want to download it?"
+  content_mod: "An addon update is available (%{size}). Do you want to download it?"
   content_zip_warning: "A new translation update is available (%{changed_size}). This update will download the full archive (%{download_size}) instead."
 
 update_prompt_dialog:

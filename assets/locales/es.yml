@@ -61,6 +61,7 @@ notification:
   saved_localize_dump: "Exportado en localize_dump.json"
   config_reloaded: "Configuración recargada."
   config_saved: "Configuración guardada."
+  config_error: "La configuración está corrupta, se han restablecido los ajustes por defecto."
   localized_data_reloaded: "Localización recargada."
   checking_for_tl_updates: "Buscando actualizaciones de traducción..."
   no_tl_updates: "No hay actualizaciones."
@@ -145,6 +146,7 @@ config_editor:
   skip_first_time_setup: "Omitir instalación inicial"
   lazy_translation_updates: "Actualizaciones de traducciones (rápidas)"
   disable_auto_update_check: "Desactivar la búsqueda de actualizaciones"
+  disable_mod_downloads: "Desactivar la descarga de traducción adicional"
   disable_translations: "Desactivar traducciones"
   enable_ipc: "Habilitar IPC"
   ipc_listen_all: "IPC escuchar todo"
@@ -189,6 +191,7 @@ config_editor:
   discord_rpc: "Discord RPC"
   menu_open_key: "Tecla para abrir menú"
   menu_open_key_set: "Establecer"
+  msaa: "MSAA"
   render_scale: "Escala de renderizado"
   aniso_level: "Filtrado anisotrópico"
   live_vocals_swap: "Cambiar vocalistas"
@@ -208,8 +211,10 @@ theme_editor:
 
 tl_update_dialog:
   title: "Nueva actualización disponible"
-  content: "Existen nuevos datos de traducción (%{size}).\n¿Deseas descargarlos ahora?"
-  content_zip_warning: "Existen nuevos datos de traducción (%{changed_size}).\nEsta actualización descargará el archivo completo (%{download_size})."
+  title_mod: "Nueva actualización adicional disponible"
+  content: "Existen nuevos datos de traducción (%{size}). ¿Deseas descargarlos ahora?"
+  content_mod: "Existen nuevos datos de traducción adicional (%{size}). ¿Deseas descargarlos ahora?"
+  content_zip_warning: "Existen nuevos datos de traducción (%{changed_size}). Esta actualización descargará el archivo completo (%{download_size})."
 
 update_prompt_dialog:
   title: "Nueva actualización disponible"
