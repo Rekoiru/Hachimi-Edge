@@ -19,7 +19,9 @@ pub struct RepoInfo {
     #[serde(default)]
     pub language: Option<String>,
     #[serde(default)]
-    pub region: Region
+    pub region: Region,
+    #[serde(default)]
+    pub index_mod: Option<String>,
 }
 
 impl RepoInfo {
@@ -104,6 +106,21 @@ struct UpdateInfo {
     will_use_zip: bool,      // Whether ZIP download will be used
 }
 
+#[derive(Clone)]
+struct ModUpdateInfo {
+    base_url: String,
+    zip_url: String,
+    zip_dir: String,
+    files: Vec<RepoFile>,
+    cached_files: FnvHashMap<String, String>,
+    size: usize,
+    #[allow(dead_code)]
+    update_size: usize,
+    #[allow(dead_code)]
+    total_size: usize,
+    will_use_zip: bool,
+}
+
 #[derive(Default, Clone)]
 pub struct UpdateProgress {
     pub current: usize,
@@ -120,6 +137,7 @@ impl UpdateProgress {
 }
 
 const REPO_CACHE_FILENAME: &str = ".tl_repo_cache";
+const REPO_CACHE_MOD_FILENAME: &str = ".tl_repo_cache_mod";
 #[derive(Serialize, Deserialize, Default)]
 struct RepoCache {
     base_url: String,
@@ -131,7 +149,9 @@ const REPO_EXCLUDES_FILENAME: &str = "excludes.txt";
 pub struct Updater {
     update_check_mutex: Mutex<()>,
     new_update: ArcSwap<Option<UpdateInfo>>,
-    progress: ArcSwap<Option<UpdateProgress>>
+    progress: ArcSwap<Option<UpdateProgress>>,
+    new_mod_update: ArcSwap<Option<ModUpdateInfo>>,
+    mod_progress: ArcSwap<Option<UpdateProgress>>,
 }
 
 const LOCALIZED_DATA_DIR: &str = "localized_data";
@@ -373,11 +393,150 @@ impl Updater {
                 )));
             }
         }
-        else if let Some(mutex) = Gui::instance() {
-            mutex.lock().unwrap().show_notification(&t!("notification.no_tl_updates"));
+        else {
+            let mut mod_updates_found = false;
+            if !config.disable_mod_downloads {
+                if let Some(mod_index_url) = &config.translation_repo_index_mod {
+                    mod_updates_found = self.check_for_mod_updates(mod_index_url, pedantic, &config, &ld_dir_path)?;
+                }
+            }
+            if !mod_updates_found {
+                if let Some(mutex) = Gui::instance() {
+                    mutex.lock().unwrap().show_notification(&t!("notification.no_tl_updates"));
+                }
+            }
         }
 
         Ok(())
+    }
+
+    fn check_for_mod_updates(
+        &self,
+        mod_index_url: &str,
+        pedantic: bool,
+        config: &crate::core::hachimi::Config,
+        ld_dir_path: &Option<PathBuf>,
+    ) -> Result<bool, Error> {
+        let hachimi = Hachimi::instance();
+
+        let mod_index: RepoIndex = match http::get_json(mod_index_url) {
+            Ok(idx) => idx,
+            Err(e) => {
+                warn!("Failed to fetch mod index: {}", e);
+                return Ok(false);
+            }
+        };
+
+        let mod_cache_path = hachimi.get_data_path(REPO_CACHE_MOD_FILENAME);
+        let mod_cache: RepoCache = if fs::metadata(&mod_cache_path).is_ok() {
+            let json = fs::read_to_string(&mod_cache_path)?;
+            serde_json::from_str(&json)?
+        } else {
+            RepoCache::default()
+        };
+
+        let excludes_path = hachimi.get_data_path(REPO_EXCLUDES_FILENAME);
+        let excludes: HashSet<String> = if excludes_path.exists() {
+            fs::read_to_string(&excludes_path)
+                .unwrap_or_default()
+                .lines()
+                .map(|l| l.trim().replace("\\", "/"))
+                .filter(|l| !l.is_empty())
+                .collect()
+        } else {
+            HashSet::new()
+        };
+
+        let is_new_mod = mod_index.base_url != mod_cache.base_url;
+        let mut update_files: Vec<RepoFile> = Vec::new();
+        let mut update_size: usize = 0;
+        let mut total_size: usize = 0;
+
+        for file in mod_index.files.iter() {
+            if file.path.contains("..") || Path::new(&file.path).has_root() {
+                warn!("Mod file path '{}' sanitized", file.path);
+                continue;
+            }
+
+            let updated = if is_new_mod {
+                true
+            } else if !pedantic && config.lazy_translation_updates {
+                if let Some(hash) = mod_cache.files.get(&file.path) {
+                    hash != &file.hash
+                } else {
+                    true
+                }
+            } else {
+                let path = ld_dir_path.as_ref().map(|p| p.join(&file.path));
+                let exists = path.as_ref().map(|p| p.is_file()).unwrap_or(false);
+
+                if !pedantic && exists && excludes.contains(&file.path) {
+                    false
+                } else if let Some(hash) = mod_cache.files.get(&file.path) {
+                    if let Some(path) = path {
+                        if !exists {
+                            true
+                        } else if hash != &file.hash {
+                            true
+                        } else if fs::metadata(&path).map(|m| m.len() as usize != file.size).unwrap_or(true) {
+                            true
+                        } else if pedantic {
+                            !file.verify_integrity(&path)
+                        } else {
+                            false
+                        }
+                    } else {
+                        true
+                    }
+                } else {
+                    true
+                }
+            };
+
+            if updated {
+                update_files.push(file.clone());
+                update_size += file.size;
+            }
+            total_size += file.size;
+        }
+
+        if !update_files.is_empty() {
+            let will_use_zip = Self::should_use_zip_download(
+                update_files.len(),
+                update_size,
+                total_size,
+                &mod_index.base_url,
+            );
+            let actual_download_size = if will_use_zip { total_size } else { update_size };
+
+            self.new_mod_update.store(Arc::new(Some(ModUpdateInfo {
+                base_url: mod_index.base_url,
+                zip_url: mod_index.zip_url,
+                zip_dir: mod_index.zip_dir,
+                files: update_files,
+                cached_files: mod_cache.files,
+                size: actual_download_size,
+                update_size,
+                total_size,
+                will_use_zip,
+            })));
+
+            if let Some(mutex) = Gui::instance() {
+                let dialog_message = t!("tl_update_dialog.content_mod", size = Size::from_bytes(actual_download_size));
+
+                mutex.lock().unwrap().show_window(Box::new(SimpleYesNoDialog::new(
+                    &t!("tl_update_dialog.title_mod"),
+                    &dialog_message,
+                    |ok| {
+                        if !ok { return; }
+                        Hachimi::instance().tl_updater.clone().run_mod();
+                    }
+                )));
+            }
+            return Ok(true);
+        }
+
+        Ok(false)
     }
 
     pub fn run(self: Arc<Self>) {
@@ -457,6 +616,92 @@ impl Updater {
         if let Some(mutex) = Gui::instance() {
             let mut gui = mutex.lock().unwrap();
             gui.show_notification(&t!("notification.update_completed"));
+            if error_count > 0 {
+                gui.show_notification(&t!("notification.errors_during_update", count = error_count));
+            }
+        }
+
+        // after main tl update completes, check now for addon updates
+        let config = hachimi.config.load();
+        if !config.disable_mod_downloads {
+            if let Some(mod_index_url) = &config.translation_repo_index_mod {
+                let ld_dir_path = config.localized_data_dir.as_ref().map(|p| hachimi.get_data_path(p));
+                if let Err(e) = self.check_for_mod_updates(mod_index_url, false, &config, &ld_dir_path) {
+                    warn!("Failed to check for mod updates: {}", e);
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    pub fn run_mod(self: Arc<Self>) {
+        std::thread::Builder::new()
+            .name("tl_repo_mod_updater".into())
+            .stack_size(8 * 1024 * 1024)
+            .spawn(move || {
+                if let Err(e) = self.clone().run_mod_internal() {
+                    error!("{}", e);
+                    self.progress.store(Arc::new(None));
+                    if let Some(mutex) = Gui::instance() {
+                        mutex.lock().unwrap().show_notification(&t!("notification.update_failed", reason = e.to_string()));
+                    }
+                }
+            })
+            .expect("Failed to spawn mod updater thread");
+    }
+
+    fn run_mod_internal(self: Arc<Self>) -> Result<(), Error> {
+        let Some(mod_info) = (**self.new_mod_update.load()).clone() else {
+            return Ok(());
+        };
+        self.new_mod_update.store(Arc::new(None));
+
+        let update_info = UpdateInfo {
+            base_url: mod_info.base_url.clone(),
+            zip_url: mod_info.zip_url.clone(),
+            zip_dir: mod_info.zip_dir.clone(),
+            files: mod_info.files.clone(),
+            is_new_repo: false,
+            cached_files: mod_info.cached_files.clone(),
+            size: mod_info.size,
+            update_size: mod_info.update_size,
+            total_size: mod_info.total_size,
+            will_use_zip: mod_info.will_use_zip,
+        };
+
+        self.progress.store(Arc::new(Some(UpdateProgress::new(0, update_info.size))));
+        if let Some(mutex) = Gui::instance() {
+            mutex.lock().unwrap().update_progress_visible = true;
+        }
+
+        let hachimi = Hachimi::instance();
+        hachimi.localized_data.store(Arc::new(LocalizedData::default()));
+
+        let localized_data_dir = hachimi.get_data_path(LOCALIZED_DATA_DIR);
+        fs::create_dir_all(&localized_data_dir)?;
+
+        let cached_files = Arc::new(Mutex::new(update_info.cached_files.clone()));
+        let error_count = if update_info.will_use_zip {
+            self.clone().download_zip(&update_info, &localized_data_dir, cached_files.clone())
+        } else {
+            self.clone().download_incremental(&update_info, &localized_data_dir, cached_files.clone())
+        }?;
+
+        self.progress.store(Arc::new(None));
+
+        hachimi.load_localized_data();
+
+        let mod_cache = RepoCache {
+            base_url: mod_info.base_url.clone(),
+            files: cached_files.lock().unwrap().clone()
+        };
+        let mod_cache_path = hachimi.get_data_path(REPO_CACHE_MOD_FILENAME);
+        utils::write_json_file(&mod_cache, &mod_cache_path)?;
+
+        if let Some(mutex) = Gui::instance() {
+            let mut gui = mutex.lock().unwrap();
+            gui.show_notification(&t!("notification.mod_update_completed"));
             if error_count > 0 {
                 gui.show_notification(&t!("notification.errors_during_update", count = error_count));
             }
@@ -758,5 +1003,9 @@ impl Updater {
 
     pub fn progress(&self) -> Option<UpdateProgress> {
         (**self.progress.load()).clone()
+    }
+
+    pub fn mod_progress(&self) -> Option<UpdateProgress> {
+        (**self.mod_progress.load()).clone()
     }
 }

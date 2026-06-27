@@ -355,6 +355,9 @@ pub struct Config {
     #[serde(default = "Config::default_virtual_res_mult")]
     pub virtual_res_mult: f32,
     pub translation_repo_index: Option<String>,
+    pub translation_repo_index_mod: Option<String>,
+    #[serde(default)]
+    pub disable_mod_downloads: bool,
     #[serde(default)]
     pub skip_first_time_setup: bool,
     #[serde(default)]

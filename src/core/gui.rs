@@ -1994,6 +1994,10 @@ impl ConfigEditor {
                 ui.checkbox(&mut config.disable_auto_update_check, "");
                 ui.end_row();
 
+                ui.label(t!("config_editor.disable_mod_downloads"));
+                ui.checkbox(&mut config.disable_mod_downloads, "");
+                ui.end_row();
+
                 ui.label(t!("config_editor.disable_translations"));
                 ui.checkbox(&mut config.disable_translations, "");
                 ui.end_row();
@@ -2408,6 +2412,7 @@ struct FirstTimeSetupWindow {
     index_request: Arc<AsyncRequest<Vec<RepoInfo>>>,
     current_page: usize,
     current_tl_repo: Option<String>,
+    current_tl_repo_mod: Option<String>,
     has_auto_selected: bool
 }
 
@@ -2421,6 +2426,7 @@ impl FirstTimeSetupWindow {
             index_request: Arc::new(tl_repo::new_meta_index_request()),
             current_page: 0,
             current_tl_repo: None,
+            current_tl_repo_mod: None,
             has_auto_selected: false
         }
     }
@@ -2509,6 +2515,7 @@ impl Window for FirstTimeSetupWindow {
                             if !self.has_auto_selected && self.current_tl_repo.is_none() {
                                 if let Some(matched) = filtered_repos.iter().find(|r| r.is_recommended(current_lang_str)) {
                                     self.current_tl_repo = Some(matched.index.clone());
+                                    self.current_tl_repo_mod = matched.index_mod.clone();
                                 }
                                 self.has_auto_selected = true;
                             }
@@ -2530,6 +2537,7 @@ impl Window for FirstTimeSetupWindow {
                                     for repo in filtered_repos.iter() {
                                         let is_matched = repo.is_recommended(current_lang_str);
                                         let is_selected = self.current_tl_repo.as_ref() == Some(&repo.index);
+                                        let has_addon = repo.index_mod.is_some();
                                         
                                         // Add separator before switching from matched to unmatched
                                         if let Some(prev_matched) = last_section {
@@ -2538,15 +2546,23 @@ impl Window for FirstTimeSetupWindow {
                                             }
                                         }
 
+                                        // Build label with addon indicator
+                                        let addon_suffix = if has_addon { " (+ addon)" } else { "" };
+
                                         // Visual indicator for auto-selected matched language repo
                                         if is_matched && is_selected {
-                                            let repo_label = format!("★ {}", repo.name);
-                                            ui.radio_value(&mut self.current_tl_repo, Some(repo.index.clone()), repo_label);
+                                            let repo_label = format!("★ {}{}", repo.name, addon_suffix);
+                                            if ui.radio_value(&mut self.current_tl_repo, Some(repo.index.clone()), repo_label).changed() {
+                                                self.current_tl_repo_mod = repo.index_mod.clone();
+                                            }
                                             if let Some(short_desc) = &repo.short_desc {
                                                 ui.label(egui::RichText::new(short_desc).small());
                                             }
                                         } else {
-                                            ui.radio_value(&mut self.current_tl_repo, Some(repo.index.clone()), &repo.name);
+                                            let repo_label = format!("{}{}", repo.name, addon_suffix);
+                                            if ui.radio_value(&mut self.current_tl_repo, Some(repo.index.clone()), repo_label).changed() {
+                                                self.current_tl_repo_mod = repo.index_mod.clone();
+                                            }
                                             if let Some(short_desc) = &repo.short_desc {
                                                 ui.label(egui::RichText::new(short_desc).small());
                                             }
@@ -2581,6 +2597,7 @@ impl Window for FirstTimeSetupWindow {
 
             if !page_open {
                 self.config.translation_repo_index = self.current_tl_repo.clone();
+                self.config.translation_repo_index_mod = self.current_tl_repo_mod.clone();
             }
 
             save_and_reload_config(self.config.clone());
