@@ -1,4 +1,4 @@
-use crate::il2cpp::{symbols::get_method_addr, types::*};
+use crate::{core::{Hachimi, game::Region}, il2cpp::{symbols::get_method_addr, types::*}};
 
 static mut GET_DRAW_COUNT_ADDR: usize = 0;
 static mut GET_IS_DAILY_ADDR: usize = 0;
@@ -36,7 +36,10 @@ pub fn init(umamusume: *const Il2CppImage) {
     unsafe {
         GET_DRAW_COUNT_ADDR = get_method_addr(GachaExecutableUnit, c"get_DrawCount", 0);
         GET_IS_DAILY_ADDR = get_method_addr(GachaExecutableUnit, c"get_IsDaily", 0);
-        GET_IS_PAID_ADDR = get_method_addr(GachaExecutableUnit, c"get_IsPaid", 0);
         GET_IS_FREE_ADDR = get_method_addr(GachaExecutableUnit, c"get_IsFree", 0);
+
+        if Hachimi::instance().game.region == Region::Japan {
+            GET_IS_PAID_ADDR = get_method_addr(GachaExecutableUnit, c"get_IsPaid", 0);
+        }
     }
 }

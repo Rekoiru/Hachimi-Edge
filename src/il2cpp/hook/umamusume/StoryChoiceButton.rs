@@ -1,12 +1,17 @@
 use std::ptr::null_mut;
 
-use crate::il2cpp::{
-    ext::Il2CppStringExt,
-    hook::Plugins::AnimateToUnity::AnText,
-    symbols::{get_field_from_name, get_field_object_value, get_method_addr},
-    types::*
+use crate::{
+    core::{
+        Hachimi,
+        game::Region
+    },
+    il2cpp::{
+        ext::Il2CppStringExt,
+        hook::Plugins::AnimateToUnity::AnText,
+        symbols::{get_field_from_name, get_field_object_value, get_method_addr},
+        types::*
+    }
 };
-use crate::core::Hachimi;
 
 static mut NORMAL_TEXT_FIELD: *mut FieldInfo = null_mut();
 static mut PUSH_TEXT_FIELD: *mut FieldInfo = null_mut();
@@ -32,11 +37,18 @@ fn get__outlineText(this: *mut Il2CppObject) -> *mut Il2CppObject {
     get_field_value(this, unsafe { OUTLINE_TEXT_FIELD })
 }
 
-type SetupButtonFn = extern "C" fn(this: *mut Il2CppObject, index: i32, text_ptr: *mut Il2CppString, charaId: i32, charaId2: i32, iconId: i32, itemId: i32);
-extern "C" fn SetupButton(this: *mut Il2CppObject, index: i32, text_ptr: *mut Il2CppString, charaId: i32, charaId2: i32, iconId: i32, itemId: i32) {
+type SetupButtonJpFn = extern "C" fn(this: *mut Il2CppObject, index: i32, text_ptr: *mut Il2CppString, charaId: i32, charaId2: i32, iconId: i32, itemId: i32);
+extern "C" fn SetupButtonJp(this: *mut Il2CppObject, index: i32, text_ptr: *mut Il2CppString, charaId: i32, charaId2: i32, iconId: i32, itemId: i32) {
     if this.is_null() { return; }
-    get_orig_fn!(SetupButton, SetupButtonFn)(this, index, text_ptr, charaId, charaId2, iconId, itemId);
+    get_orig_fn!(SetupButtonJp, SetupButtonJpFn)(this, index, text_ptr, charaId, charaId2, iconId, itemId);
     apply_multi_line_fix(this, text_ptr);
+}
+
+type SetupButtonOtherFn = extern "C" fn(this: *mut Il2CppObject, index: i32, text: *mut Il2CppString, chara_id: i32);
+extern "C" fn SetupButtonOther(this: *mut Il2CppObject, index: i32, text: *mut Il2CppString, chara_id: i32) {
+    if this.is_null() { return; }
+    get_orig_fn!(SetupButtonOther, SetupButtonOtherFn)(this, index, text, chara_id);
+    apply_multi_line_fix(this, text);
 }
 
 type SetupTextFn = extern "C" fn(this: *mut Il2CppObject, text: *mut Il2CppString);
@@ -133,8 +145,13 @@ fn reset_text_to_default(text_obj: *mut Il2CppObject) {
 pub fn init(umamusume: *const Il2CppImage) {
     get_class_or_return!(umamusume, Gallop, StoryChoiceButton);
 
-    let SetupButton_addr = get_method_addr(StoryChoiceButton, c"SetupButton", 6);
-    new_hook!(SetupButton_addr, SetupButton);
+    if Hachimi::instance().game.region == Region::Japan {
+        let SetupButton_addr = get_method_addr(StoryChoiceButton, c"SetupButton", 6);
+        new_hook!(SetupButton_addr, SetupButtonJp);
+    } else {
+        let SetupButton_addr = get_method_addr(StoryChoiceButton, c"SetupButton", 3);
+        new_hook!(SetupButton_addr, SetupButtonOther);
+    }
 
     let SetupText_addr = get_method_addr(StoryChoiceButton, c"SetupText", 1);
     new_hook!(SetupText_addr, SetupText);

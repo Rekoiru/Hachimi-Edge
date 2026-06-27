@@ -1,15 +1,20 @@
 use crate::{
     core::{hachimi::UITextConfig, Hachimi},
+    core::game::Region,
     il2cpp::{
         ext::{Il2CppStringExt, StringExt},
         symbols::get_method_addr,
-        types::*
-    }
+        types::*,
+        hook::{
+            UnityEngine_CoreModule::{Component, GameObject, Object, RectTransform},
+            UnityEngine_UI::Text as UIText,
+        },
+        api::{il2cpp_class_get_type, il2cpp_type_get_object},
+    },
 };
 
-use super::{ButtonCommon, CharacterHomeTopUI};
-use std::collections::HashMap;
-use std::sync::Mutex;
+use super::{ButtonCommon, CharacterHomeTopUI, TextCommon};
+use std::{collections::HashMap, sync::Mutex};
 use once_cell::sync::Lazy;
 
 static ORIGINAL_POSITIONS: Lazy<Mutex<HashMap<usize, Vector2_t>>> = Lazy::new(|| Mutex::new(HashMap::new()));
@@ -36,9 +41,7 @@ extern "C" fn UpdateView(this: *mut Il2CppObject) {
     apply_button_configs(this);
 }
 
-fn is_valid_enhancement_context(this: *mut Il2CppObject) -> bool {
-    use crate::il2cpp::hook::UnityEngine_CoreModule::{Component, Object};
-    
+fn is_valid_enhancement_context(this: *mut Il2CppObject) -> bool {    
     let card_button = CharacterHomeTopUI::get_cardRootButton(this);
     if card_button.is_null() {
         return false;
@@ -98,7 +101,17 @@ fn apply_button_configs(this: *mut Il2CppObject) {
     apply!(character_home_top_support_sell_button, get_supportSellButton);
     apply!(character_home_top_support_list_button, get_supportListButton);
     apply!(character_home_top_trained_list_button, get_trainedListButton);
-    apply!(character_home_top_new_team_edit_button, get_newTeamEditButton);
+    apply!(character_home_top_support_lv_up_button, get_supportLvUpButton);
+    apply!(character_home_top_support_limit_break_button, get_supportLimitBreakButton);
+    
+    // handle conditional layout difference between regions safely
+    if Hachimi::instance().game.region == Region::Japan {
+        apply!(character_home_top_new_team_edit_button, get_newTeamEditButton);
+    } else {
+        // fallback translation mapping for target layouts inside alternative regions
+        apply!(character_home_top_new_team_edit_button, get_teamEditButton);
+    }
+    
     apply!(character_home_top_transfer_button, get_transferButton);
     apply!(character_home_top_trained_chara_root_short_button, get_trainedCharaRootShortButton);
     apply!(character_home_top_succession_only_chara_root_button, get_successionOnlyCharaRootButton);
@@ -120,9 +133,6 @@ fn apply_button_config(button: *mut Il2CppObject, config: &UITextConfig, config_
 }
 
 fn collect_text_components(button: *mut Il2CppObject, config_name: &str) -> Vec<*mut Il2CppObject> {
-    use crate::il2cpp::hook::UnityEngine_CoreModule::{Component, GameObject, Object};
-    use super::TextCommon;
-
     let game_object = Component::get_gameObject(button);
     if game_object.is_null() {
         return Vec::new();
@@ -130,9 +140,6 @@ fn collect_text_components(button: *mut Il2CppObject, config_name: &str) -> Vec<
 
     // we need to find some strings in some problematic buttons
     if config_name == "character_home_top_succession_only_start_button" {
-        use crate::il2cpp::api::{il2cpp_class_get_type, il2cpp_type_get_object};
-        use crate::il2cpp::hook::UnityEngine_UI::Text as UIText;
-
         let text_class = UIText::class();
         if text_class.is_null() {
             return Vec::new();
@@ -185,7 +192,6 @@ fn collect_text_components(button: *mut Il2CppObject, config_name: &str) -> Vec<
 }
 
 fn apply_text_config(text_component: *mut Il2CppObject, config: &UITextConfig, index: usize) {
-    use crate::il2cpp::hook::UnityEngine_UI::Text as UIText;
 
     // index 0 and rest is 'text', index 1 is 'text2'
     let text_to_apply = if index == 1 {
@@ -217,23 +223,17 @@ fn apply_position_offset(text_component: *mut Il2CppObject, config: &UITextConfi
 
     let Some(rect_transform) = get_rect_transform(text_component) else { return };
     
-    let (get_pos_fn, set_pos_fn) = match get_position_functions(rect_transform) {
-        Some(fns) => fns,
-        None => return,
-    };
-
-    let current_pos = get_pos_fn(rect_transform);
+    // use the native wrapper implementation directly
+    let current_pos = RectTransform::get_anchoredPosition(rect_transform);
     let (base_x, base_y) = get_or_store_original_position(rect_transform, current_pos.x, current_pos.y);
 
     let new_x = offset_x.map(|ox| base_x + ox).unwrap_or(base_x);
     let new_y = offset_y.map(|oy| base_y + oy).unwrap_or(base_y);
 
-    set_pos_fn(rect_transform, Vector2_t { x: new_x, y: new_y });
+    RectTransform::set_anchoredPosition(rect_transform, Vector2_t { x: new_x, y: new_y });
 }
 
 fn get_rect_transform(text_component: *mut Il2CppObject) -> Option<*mut Il2CppObject> {
-    use crate::il2cpp::hook::UnityEngine_CoreModule::{Component, GameObject, RectTransform};
-
     let text_go = Component::get_gameObject(text_component);
     if text_go.is_null() {
         return None;
@@ -252,29 +252,6 @@ fn get_rect_transform(text_component: *mut Il2CppObject) -> Option<*mut Il2CppOb
     }
 }
 
-type GetAnchoredPositionFn = extern "C" fn(*mut Il2CppObject) -> Vector2_t;
-type SetAnchoredPositionFn = extern "C" fn(*mut Il2CppObject, Vector2_t);
-
-fn get_position_functions(rect_transform: *mut Il2CppObject) -> Option<(GetAnchoredPositionFn, SetAnchoredPositionFn)> {
-    use crate::il2cpp::ext::Il2CppObjectExt;
-    
-    let klass = unsafe { (*rect_transform).klass() };
-    
-    let get_addr = get_method_addr(klass, c"get_anchoredPosition", 0);
-    let set_addr = get_method_addr(klass, c"set_anchoredPosition", 1);
-    
-    if get_addr == 0 || set_addr == 0 {
-        return None;
-    }
-
-    unsafe {
-        Some((
-            std::mem::transmute(get_addr),
-            std::mem::transmute(set_addr),
-        ))
-    }
-}
-
 fn get_or_store_original_position(rect_transform: *mut Il2CppObject, current_x: f32, current_y: f32) -> (f32, f32) {
     let mut original_pos_map = ORIGINAL_POSITIONS.lock().unwrap();
     let base_pos_ref = original_pos_map.entry(rect_transform as usize).or_insert_with(|| {
@@ -283,8 +260,9 @@ fn get_or_store_original_position(rect_transform: *mut Il2CppObject, current_x: 
     (base_pos_ref.x, base_pos_ref.y)
 }
 
-pub fn init(umamusume: *const Il2CppImage) {
-    get_class_or_return!(umamusume, Gallop, CharacterHomeTopUI);
+pub fn init(Plugins: *const Il2CppImage) {
+    get_class_or_return!(Plugins, Gallop, CharacterHomeTopUI);
+
     let UpdateView_addr = get_method_addr(CharacterHomeTopUI, c"UpdateView", 0);
     new_hook!(UpdateView_addr, UpdateView);
 }

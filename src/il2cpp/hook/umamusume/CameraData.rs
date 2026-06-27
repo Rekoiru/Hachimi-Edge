@@ -1,6 +1,9 @@
 use std::ptr::null_mut;
 use serde::{Serialize, Deserialize};
-use crate::il2cpp::{symbols::get_method_addr, types::*};
+use crate::{
+    core::{Hachimi, game::Region},
+    il2cpp::{symbols::get_method_addr, types::*}
+};
 
 #[derive(Default, Clone, Copy, Serialize, Deserialize, PartialEq)]
 #[repr(i32)]
@@ -25,6 +28,9 @@ static mut SET_OVERRIDESHADOWRESOLUTION_ADDR: usize = 0;
 impl_addr_wrapper_fn!(set_OverrideShadowResolution, SET_OVERRIDESHADOWRESOLUTION_ADDR, (), this: *mut Il2CppObject, value: ShadowResolution);
 
 pub fn init(umamusume: *const Il2CppImage) {
+    if Hachimi::instance().game.region != Region::Japan {
+        return;
+    }
     get_class_or_return!(umamusume, "Gallop.RenderPipeline", CameraData);
     unsafe {
         CLASS = CameraData;

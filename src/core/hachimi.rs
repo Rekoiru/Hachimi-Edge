@@ -890,6 +890,8 @@ pub struct ButtonOverrides {
     pub character_home_top_support_sell_button: Option<UITextConfig>,
     pub character_home_top_support_list_button: Option<UITextConfig>,
     pub character_home_top_trained_list_button: Option<UITextConfig>,
+    pub character_home_top_support_lv_up_button: Option<UITextConfig>,
+    pub character_home_top_support_limit_break_button: Option<UITextConfig>,
     pub character_home_top_new_team_edit_button: Option<UITextConfig>,
     pub character_home_top_transfer_button: Option<UITextConfig>,
     pub character_home_top_trained_chara_root_short_button: Option<UITextConfig>,

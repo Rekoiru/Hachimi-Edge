@@ -1,5 +1,5 @@
 use crate::{
-    core::Hachimi,
+    core::{Hachimi, game::Region},
     il2cpp::{
         hook::UnityEngine_UI::Text,
         symbols::{get_field_from_name, get_field_object_value, get_method_addr},
@@ -42,10 +42,12 @@ pub fn init(umamusume: *const Il2CppImage) {
     get_class_or_return!(umamusume, Gallop, StoryViewTextControllerLandscape);
 
     let SetFontSize_addr = get_method_addr(StoryViewTextControllerLandscape, c"SetFontSize", 1);
-    let SetLineSpacing_addr = get_method_addr(StoryViewTextControllerLandscape, c"SetLineSpacing", 1);
-
     new_hook!(SetFontSize_addr, SetFontSize);
-    new_hook!(SetLineSpacing_addr, SetLineSpacing);
+
+    if Hachimi::instance().game.region == Region::Japan {
+        let SetLineSpacing_addr = get_method_addr(StoryViewTextControllerLandscape, c"SetLineSpacing", 1);
+        new_hook!(SetLineSpacing_addr, SetLineSpacing);
+    }
 
     unsafe {
         _TEXTFRAME_FIELD = get_field_from_name(StoryViewTextControllerLandscape, c"_textFrame");

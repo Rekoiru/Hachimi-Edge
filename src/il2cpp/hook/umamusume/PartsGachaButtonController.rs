@@ -1,5 +1,5 @@
 use crate::{
-    core::{hachimi::UITextConfig, Hachimi},
+    core::{hachimi::UITextConfig, Hachimi, game::Region},
     il2cpp::{
         ext::{Il2CppObjectExt, StringExt},
         symbols::get_method_addr,
@@ -15,10 +15,18 @@ use once_cell::sync::Lazy;
 static ORIGINAL_POSITIONS: Lazy<Mutex<HashMap<usize, Vector2_t>>> = Lazy::new(|| Mutex::new(HashMap::new()));
 
 type SetButtonTextFn = extern "C" fn(this: *mut Il2CppObject);
-type InitializeFn = extern "C" fn(this: *mut Il2CppObject, executable: *mut Il2CppObject, card_type: i32, ticket_counter: *mut Il2CppObject, on_success: *mut Il2CppObject, is_only_one: bool, index: i32, is_small: bool, open_dialog_type: i32);
 
-extern "C" fn Initialize(this: *mut Il2CppObject, executable: *mut Il2CppObject, card_type: i32, ticket_counter: *mut Il2CppObject, on_success: *mut Il2CppObject, is_only_one: bool, index: i32, is_small: bool, open_dialog_type: i32) {
-    get_orig_fn!(Initialize, InitializeFn)(this, executable, card_type, ticket_counter, on_success, is_only_one, index, is_small, open_dialog_type);
+type InitializeJpFn = extern "C" fn(this: *mut Il2CppObject, executable: *mut Il2CppObject, card_type: i32, ticket_counter: *mut Il2CppObject, on_success: *mut Il2CppObject, is_only_one: bool, index: i32, is_small: bool, open_dialog_type: i32);
+extern "C" fn InitializeJp(this: *mut Il2CppObject, executable: *mut Il2CppObject, card_type: i32, ticket_counter: *mut Il2CppObject, on_success: *mut Il2CppObject, is_only_one: bool, index: i32, is_small: bool, open_dialog_type: i32) {
+    get_orig_fn!(InitializeJp, InitializeJpFn)(this, executable, card_type, ticket_counter, on_success, is_only_one, index, is_small, open_dialog_type);
+    
+    if this.is_null() || executable.is_null() { return; }
+    apply_gacha_button_config(this, executable);
+}
+
+type InitializeOtherFn = extern "C" fn(this: *mut Il2CppObject, executable: *mut Il2CppObject, card_type: i32, ticket_counter: *mut Il2CppObject, on_success: *mut Il2CppObject, is_only_one: bool, index: i32);
+extern "C" fn InitializeOther(this: *mut Il2CppObject, executable: *mut Il2CppObject, card_type: i32, ticket_counter: *mut Il2CppObject, on_success: *mut Il2CppObject, is_only_one: bool, index: i32) {
+    get_orig_fn!(InitializeOther, InitializeOtherFn)(this, executable, card_type, ticket_counter, on_success, is_only_one, index);
     
     if this.is_null() || executable.is_null() { return; }
     apply_gacha_button_config(this, executable);
@@ -348,8 +356,14 @@ fn get_or_store_original_position(rect_transform: *mut Il2CppObject, current_x: 
 
 pub fn init(umamusume: *const Il2CppImage) {
     if let Ok(class) = crate::il2cpp::symbols::get_class(umamusume, cstr!("Gallop"), cstr!("PartsGachaButton")) {
-        let Initialize_addr = get_method_addr(class, c"Initialize", 8);
-        new_hook!(Initialize_addr, Initialize);
+        if Hachimi::instance().game.region == Region::Japan {
+            let Initialize_addr = get_method_addr(class, c"Initialize", 8);
+            new_hook!(Initialize_addr, InitializeJp);
+        }
+        else {
+            let Initialize_addr = get_method_addr(class, c"Initialize", 6);
+            new_hook!(Initialize_addr, InitializeOther);
+        }
 
         let SetButtonText_addr = get_method_addr(class, c"SetButtonText", 0);
         new_hook!(SetButtonText_addr, SetButtonText);

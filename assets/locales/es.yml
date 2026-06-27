@@ -131,7 +131,7 @@ config_editor:
   ipv4_only: "Usar IPv4 (sólo en ureq)"
   meta_index_url: "URL para las traducciones (meta)"
   debug_mode: "Modo depuración"
-  text_debug: "Depuración de texto"
+  text_debug: "Modo de depuración de texto"
   text_log: "Log de texto procesado"
   text_property_dump: "Volcar propiedades de UI"
   text_localize_dump: "Volcar cadenas localizadas"

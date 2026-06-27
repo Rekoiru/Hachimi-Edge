@@ -136,7 +136,7 @@ config_editor:
   ipv4_only: "IPv4 ureq only"
   meta_index_url: "Translations Meta URL"
   debug_mode: "Debug mode"
-  text_debug: "Text debug"
+  text_debug: "Text debug mode"
   text_log: "Log text processed"
   text_property_dump: "Dump UI properties"
   text_localize_dump: "Dump Localized strings"

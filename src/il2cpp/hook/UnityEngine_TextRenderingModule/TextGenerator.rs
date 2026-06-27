@@ -21,6 +21,7 @@ use crate::{
         types::*
     }
 };
+
 static DUMPED_PATHS: Lazy<Mutex<FnvHashSet<String>>> = Lazy::new(|| Mutex::default());
 static SYSTEM_TEXT_COMPONENTS: Lazy<Mutex<FnvHashSet<i32>>> = Lazy::new(|| Mutex::default());
 
@@ -95,6 +96,7 @@ type PopulateWithErrorsFn = extern "C" fn(
     this: *mut Il2CppObject, str: *mut Il2CppString,
     settings: TextGenerationSettings_t, context: *mut Il2CppObject
 ) -> bool;
+
 extern "C" fn PopulateWithErrors(
     this: *mut Il2CppObject, str_: *mut Il2CppString,
     mut settings: TextGenerationSettings_t, context: *mut Il2CppObject
@@ -146,6 +148,7 @@ extern "C" fn PopulateWithErrors(
 
     let path = get_hierarchy_path_with_fallback(context, this);
 
+    // optimized layout bypass block
     if Hachimi::instance().game.region == Region::Japan && path.contains("PartsCharaMessage") {
         settings.horizontalOverflow = 0;
         settings.verticalOverflow = 0;
@@ -157,20 +160,11 @@ extern "C" fn PopulateWithErrors(
             unsafe {
                 let rt = (*context).transform();
                 if !rt.is_null() && il2cpp_class_is_assignable_from(RectTransform::class(), (*rt).klass()) {
-                
                     let original_sz = RectTransform::get_sizeDelta(rt);
                     // info!("[LayoutTweak] ORIGINAL Margin Offsets -> X: {}, Y: {}", original_sz.x, original_sz.y);
-
-                    // tweaking the box margins
-                    let expanded_margins = Vector2_t { x: -74.0, y: original_sz.y }; 
-
-                    let set_size_delta_addr = get_method_addr(RectTransform::class(), c"set_sizeDelta", 1);
-                    if set_size_delta_addr != 0 {
-                        // info!("[LayoutTweak] NEW Margin Offsets applied -> X: {}, Y: {}", expanded_margins.x, expanded_margins.y);
-
-                        let set_size_delta: extern "C" fn(*mut Il2CppObject, Vector2_t) = std::mem::transmute(set_size_delta_addr);
-                        set_size_delta(rt, expanded_margins);
-                    }
+                    let expanded_margins = Vector2_t { x: -74.0, y: original_sz.y }; // tweaking the box margins
+                    RectTransform::set_sizeDelta(rt, expanded_margins);
+                    // info!("[LayoutTweak] NEW Margin Offsets applied -> X: {}, Y: {}", expanded_margins.x, expanded_margins.y);
                 }
             }
         }
@@ -361,7 +355,6 @@ fn find_sibling_by_name(anchor: *mut Il2CppObject, sibling_name: &str) -> Option
     if anchor.is_null() { return None; }
     let parent = Transform::get_parent(anchor);
     if parent.is_null() { return None; }
-
 
     let parts: Vec<&str> = sibling_name.split('/').collect();
     let mut current = parent;
@@ -627,13 +620,12 @@ struct TemplateContext<'a> {
 
 impl<'a> template::Context for TemplateContext<'a> {
     fn on_filter_eval(&mut self, name: &str, args: &[template::Token]) -> Option<String> {
-        // Extra filters to modify the text generation settings
+        // extra filters to modify the text generation settings
         match name {
             "nb" => {
                 self.settings.horizontalOverflow = TextOverflow_Allow;
                 self.settings.generateOutOfBounds = true;
             }
-
             "anchor" => {
                 // Anchor values:
                 // 1  2  3
@@ -650,7 +642,6 @@ impl<'a> template::Context for TemplateContext<'a> {
                 }
                 self.settings.textAnchor = anchor;
             }
-
             "scale" => {
                 // Example: $(scale 80) = scale font size to 80%
                 let value = args.get(0)?;
@@ -659,7 +650,6 @@ impl<'a> template::Context for TemplateContext<'a> {
                 };
                 self.settings.fontSize = (self.settings.fontSize as f64 * (percentage / 100.0)) as i32;
             }
-
             "ho" => {
                 // $(ho 0) or $(ho 1)
                 let value = args.get(0)?;
@@ -672,7 +662,6 @@ impl<'a> template::Context for TemplateContext<'a> {
                 }
                 self.settings.horizontalOverflow = overflow;
             }
-
             "vo" => {
                 // $(vo 0) or $(vo 1)
                 let value = args.get(0)?;
@@ -685,46 +674,44 @@ impl<'a> template::Context for TemplateContext<'a> {
                 }
                 self.settings.verticalOverflow = overflow;
             }
-
             "ls" => {
+            	// Example: $(ls 1.5) = separate lines by 1.5
                 let value = args.get(0)?;
                 let template::Token::NumberLit(ls) = *value else {
                     return None;
                 };
                 self.settings.lineSpacing = ls as f32;
             }
-
             "ub" => {
+            	// update bounds
                 self.settings.updateBounds = true;
             }
-
             "bf" | "bestfit" => {
+            	// allow auto-resizing the font to the container size
                 self.settings.resizeTextForBestFit = true;
             }
-
             "min" => {
+            	// min font size - can be useful for some containers
                 let value = args.get(0)?;
                 let template::Token::NumberLit(min) = *value else {
                     return None;
                 };
                 self.settings.resizeTextMinSize = min as i32;
             }
-
             "max" => {
+            	// max font size - can be useful for some containers
                 let value = args.get(0)?;
                 let template::Token::NumberLit(max) = *value else {
                     return None;
                 };
                 self.settings.resizeTextMaxSize = max as i32;
             }
-
             "oob" => {
+            	// generate the text out of any bound
                 self.settings.generateOutOfBounds = true;
             }
-
             _ => return None
         }
-
         Some(String::new())
     }
 }
@@ -743,8 +730,6 @@ impl template::Context for IgnoreTGFiltersContext {
 
 pub fn init(UnityEngine_TextRenderingModule: *const Il2CppImage) {
     get_class_or_return!(UnityEngine_TextRenderingModule, UnityEngine, TextGenerator);
-
     let PopulateWithErrors_addr = get_method_addr(TextGenerator, c"PopulateWithErrors", 3);
-
     new_hook!(PopulateWithErrors_addr, PopulateWithErrors);
 }
