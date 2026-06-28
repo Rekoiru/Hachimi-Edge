@@ -162,7 +162,7 @@ extern "C" fn PopulateWithErrors(
                 if !rt.is_null() && il2cpp_class_is_assignable_from(RectTransform::class(), (*rt).klass()) {
                     let original_sz = RectTransform::get_sizeDelta(rt);
                     // info!("[LayoutTweak] ORIGINAL Margin Offsets -> X: {}, Y: {}", original_sz.x, original_sz.y);
-                    let expanded_margins = Vector2_t { x: -74.0, y: original_sz.y }; // tweaking the box margins
+                    let expanded_margins = Vector2_t { x: -68.0, y: original_sz.y }; // tweaking the box margins
                     RectTransform::set_sizeDelta(rt, expanded_margins);
                     // info!("[LayoutTweak] NEW Margin Offsets applied -> X: {}, Y: {}", expanded_margins.x, expanded_margins.y);
                 }
@@ -206,6 +206,8 @@ extern "C" fn PopulateWithErrors(
             }
 
             if common.position_offset_x.is_some() || common.position_offset_y.is_some()
+                || common.sizedelta_x.is_some() || common.sizedelta_y.is_some()
+                || common.pivot_x.is_some() || common.pivot_y.is_some()
                 || props.sibling_name.is_some() || props.siblings.as_ref().map(|s: &Vec<SiblingOverride>| !s.is_empty()).unwrap_or(false)
             {
                 queue_position_offset(context, this, props);
@@ -242,12 +244,22 @@ extern "C" fn PopulateWithErrors(
             let safe_orig = orig_s.replace('\n', "\\n").replace('\r', "\\r");
             let safe_processed = processed_text.replace('\n', "\\n").replace('\r', "\\r");
 
+            let ctx_size_delta = if !context.is_null() {
+                unsafe {
+                    let rt = (*context).transform();
+                    if !rt.is_null() && il2cpp_class_is_assignable_from(RectTransform::class(), (*rt).klass()) {
+                        let sd = RectTransform::get_sizeDelta(rt);
+                        (sd.x, sd.y)
+                    } else { (0.0, 0.0) }
+                }
+            } else { (0.0, 0.0) };
+
             if hashed_text.is_some() {
-                info!("[Hashed] hash: {:X}, original: {}, processed: {}, size: {}, bf: {}, ho: {}, vo: {}, rt: {}, sf: {}, fs: {}, ta: {}, context: {}, extents: {:?}, pivot: {:?}",
-                    hash, safe_orig, safe_processed, settings.fontSize, settings.resizeTextForBestFit, settings.horizontalOverflow, settings.verticalOverflow, settings.richText, settings.scaleFactor, settings.fontStyle, settings.textAnchor, path, settings.generationExtents, settings.pivot);
+                info!("[Hashed] hash: {:X}, original: {}, processed: {}, size: {}, bf: {}, ho: {}, vo: {}, rt: {}, dsx: {}, dsy: {}, ta: {}, extents: {:?}, pivot: {:?}, context: {}",
+                    hash, safe_orig, safe_processed, settings.fontSize, settings.resizeTextForBestFit, settings.horizontalOverflow, settings.verticalOverflow, settings.richText, ctx_size_delta.0, ctx_size_delta.1, settings.textAnchor, settings.generationExtents, settings.pivot, path);
             } else {
-                info!("[Generic] original: {}, processed: {}, size: {}, bf: {}, ho: {}, vo: {}, rt: {}, sf: {}, fs: {}, ta: {}, context: {}, extents: {:?}, pivot: {:?}",
-                    safe_orig, safe_processed, settings.fontSize, settings.resizeTextForBestFit, settings.horizontalOverflow, settings.verticalOverflow, settings.richText, settings.scaleFactor, settings.fontStyle, settings.textAnchor, path, settings.generationExtents, settings.pivot);
+                info!("[Generic] original: {}, processed: {}, size: {}, bf: {}, ho: {}, vo: {}, rt: {}, dsx: {}, dsy: {}, ta: {}, extents: {:?}, pivot: {:?}, context: {}",
+                    safe_orig, safe_processed, settings.fontSize, settings.resizeTextForBestFit, settings.horizontalOverflow, settings.verticalOverflow, settings.richText, ctx_size_delta.0, ctx_size_delta.1, settings.textAnchor, settings.generationExtents, settings.pivot, path);
             }
         }
         orig_fn(this, processed_text.to_il2cpp_string(), settings, context)
@@ -255,8 +267,19 @@ extern "C" fn PopulateWithErrors(
         if config.text_debug && config.text_log {
             let orig_s = unsafe { (*str_).as_utf16str().to_string() };
             let orig_s = orig_s.replace('\n', "\\n").replace('\r', "\\r");
-            info!("[Generic] {}, size: {}, bf: {}, ho: {}, vo: {}, rt: {}, sf: {}, fs: {}, ta: {}, context: {}, extents: {:?}, pivot: {:?}",
-                orig_s, settings.fontSize, settings.resizeTextForBestFit, settings.horizontalOverflow, settings.verticalOverflow, settings.richText, settings.scaleFactor, settings.fontStyle, settings.textAnchor, path, settings.generationExtents, settings.pivot);
+
+            let ctx_size_delta = if !context.is_null() {
+                unsafe {
+                    let rt = (*context).transform();
+                    if !rt.is_null() && il2cpp_class_is_assignable_from(RectTransform::class(), (*rt).klass()) {
+                        let sd = RectTransform::get_sizeDelta(rt);
+                        (sd.x, sd.y)
+                    } else { (0.0, 0.0) }
+                }
+            } else { (0.0, 0.0) };
+
+            info!("[Generic] {}, size: {}, bf: {}, ho: {}, vo: {}, rt: {}, dsx: {}, dsy: {}, ta: {}, extents: {:?}, pivot: {:?}, context: {}",
+                orig_s, settings.fontSize, settings.resizeTextForBestFit, settings.horizontalOverflow, settings.verticalOverflow, settings.richText, ctx_size_delta.0, ctx_size_delta.1, settings.textAnchor, settings.generationExtents, settings.pivot, path);
         }
         orig_fn(this, str_, settings, context)
     }
@@ -268,7 +291,10 @@ fn queue_position_offset(context: *mut Il2CppObject, fallback: *mut Il2CppObject
 
     let mut actions = Vec::new();
 
-    if props.common.position_offset_x.is_some() || props.common.position_offset_y.is_some() || props.common.font_size.is_some() {
+    if props.common.position_offset_x.is_some() || props.common.position_offset_y.is_some()
+        || props.common.sizedelta_x.is_some() || props.common.sizedelta_y.is_some()
+        || props.common.pivot_x.is_some() || props.common.pivot_y.is_some()
+        || props.common.font_size.is_some() {
         let mut transform = unsafe { (*start_obj).transform() };
         if !transform.is_null() {
             let ancestor_levels = props.position_target_ancestor.unwrap_or(0);
@@ -399,6 +425,16 @@ fn apply_common_overrides(
                 let mut pivot = RectTransform::get_pivot(target);
                 pivot.y = py;
                 RectTransform::set_pivot(target, pivot);
+            }
+            if let Some(sdx) = props.sizedelta_x {
+                let mut sizedelta = RectTransform::get_sizeDelta(target);
+                sizedelta.x = sdx;
+                RectTransform::set_sizeDelta(target, sizedelta);
+            }
+            if let Some(sdy) = props.sizedelta_y {
+                let mut sizedelta = RectTransform::get_sizeDelta(target);
+                sizedelta.y = sdy;
+                RectTransform::set_sizeDelta(target, sizedelta);
             }
 
             if props.position_offset_x.is_some() || props.position_offset_y.is_some() {

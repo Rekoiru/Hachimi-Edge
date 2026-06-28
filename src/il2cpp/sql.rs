@@ -353,7 +353,7 @@ impl TextDataQuery {
 
         if let Some(text) = text_opt {
             if Self::is_skill_learning_query() {
-                return Some(format!("$(bf){}", text).to_il2cpp_string());
+                return Some(format!("{}", text).to_il2cpp_string());
             }
             Some(text.to_il2cpp_string())
         }
