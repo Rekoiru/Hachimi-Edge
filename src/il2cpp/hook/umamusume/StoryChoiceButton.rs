@@ -44,10 +44,10 @@ extern "C" fn SetupButtonJp(this: *mut Il2CppObject, index: i32, text_ptr: *mut 
     apply_multi_line_fix(this, text_ptr);
 }
 
-type SetupButtonOtherFn = extern "C" fn(this: *mut Il2CppObject, index: i32, text: *mut Il2CppString, chara_id: i32);
-extern "C" fn SetupButtonOther(this: *mut Il2CppObject, index: i32, text: *mut Il2CppString, chara_id: i32) {
+type SetupButtonOtherFn = extern "C" fn(this: *mut Il2CppObject, index: i32, text: *mut Il2CppString, chara_id: i32, iconId: i32, itemId: i32);
+extern "C" fn SetupButtonOther(this: *mut Il2CppObject, index: i32, text: *mut Il2CppString, chara_id: i32, iconId: i32, itemId: i32) {
     if this.is_null() { return; }
-    get_orig_fn!(SetupButtonOther, SetupButtonOtherFn)(this, index, text, chara_id);
+    get_orig_fn!(SetupButtonOther, SetupButtonOtherFn)(this, index, text, chara_id, iconId, itemId);
     apply_multi_line_fix(this, text);
 }
 
@@ -149,7 +149,7 @@ pub fn init(umamusume: *const Il2CppImage) {
         let SetupButton_addr = get_method_addr(StoryChoiceButton, c"SetupButton", 6);
         new_hook!(SetupButton_addr, SetupButtonJp);
     } else {
-        let SetupButton_addr = get_method_addr(StoryChoiceButton, c"SetupButton", 3);
+        let SetupButton_addr = get_method_addr(StoryChoiceButton, c"SetupButton", 5);
         new_hook!(SetupButton_addr, SetupButtonOther);
     }
 
