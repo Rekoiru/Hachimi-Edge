@@ -744,10 +744,16 @@ impl Gui {
             return;
         };
 
+        let y_pos = if cfg!(target_os = "android") {
+            46.0 * scale
+        } else {
+            16.0 * scale
+        };
+
         egui::Area::new(id)
         .fixed_pos(egui::Pos2 {
             x: (-250.0 * scale) * (1.0 - tween_val),
-            y: 16.0 * scale
+            y: y_pos
         })
         .show(ctx, |ui| {
             egui::Frame::NONE
@@ -914,6 +920,11 @@ impl Gui {
                         }
                         if ui.button(t!("menu.tl_check_for_updates_pedantic")).clicked() {
                             hachimi.tl_updater.clone().check_for_updates(true);
+                        }
+                        if hachimi.config.load().translation_repo_index_mod.is_some() {
+                            if ui.button(t!("menu.addon_check_for_updates_pedantic")).clicked() {
+                                hachimi.tl_updater.clone().check_for_mod_updates_only(true);
+                            }
                         }
                         if hachimi.config.load().translator_mode {
                             if ui.button(t!("menu.dump_localize_dict")).clicked() {
@@ -1307,10 +1318,16 @@ impl Gui {
         });
         let ratio = progress.current as f32 / progress.total as f32;
 
+        let y_pos = if cfg!(target_os = "android") {
+            46.0 * scale
+        } else {
+            4.0 * scale
+        };
+
         egui::Area::new("update_progress".into())
         .fixed_pos(egui::Pos2 {
             x: 4.0 * scale,
-            y: 4.0 * scale
+            y: y_pos
         })
         .show(ctx, |ui| {
             egui::Frame::NONE

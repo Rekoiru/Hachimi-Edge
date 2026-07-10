@@ -49,6 +49,7 @@ menu:
   reload_localized_data: "\uf021 Reload localized data"
   tl_check_for_updates: "\uf0aa Check for translation updates"
   tl_check_for_updates_pedantic: "\uf0aa Check for translation updates (pedantic)"
+  addon_check_for_updates_pedantic: "\uf0aa Check for addon updates (pedantic)"
   dump_localize_dict: "Dump localize dict"
   danger_zone_heading: "\uf071 Danger Zone"
   danger_zone_warning: "These options might have unintended effects on the game. Use with caution!"

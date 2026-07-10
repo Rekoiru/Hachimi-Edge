@@ -49,6 +49,7 @@ menu:
   reload_localized_data: "\uf021 Recargar localización"
   tl_check_for_updates: "\uf0aa Buscar actualizaciones de traducción"
   tl_check_for_updates_pedantic: "\uf0aa Buscar actualizaciones de traducción (exhaustivo)"
+  addon_check_for_updates_pedantic: "\uf0aa Buscar actualizaciones de addon (exhaustivo)"
   dump_localize_dict: "Exportar localize dict"
   danger_zone_heading: "\uf071 Zona Peligrosa"
   danger_zone_warning: "Las siguientes opciones podrían tener efectos adversos en el juego. ¡Úsalas con precaución!"

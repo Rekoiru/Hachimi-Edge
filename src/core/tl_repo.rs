@@ -269,6 +269,20 @@ impl Updater {
             HashSet::new()
         };
 
+        // load the mod cache to identify files managed by the addon repo
+        let mod_managed_paths: HashSet<String> = if !config.disable_mod_downloads && config.translation_repo_index_mod.is_some() {
+            let mod_cache_path = hachimi.get_data_path(REPO_CACHE_MOD_FILENAME);
+            if fs::metadata(&mod_cache_path).is_ok() {
+                let json = fs::read_to_string(&mod_cache_path).unwrap_or_default();
+                let mod_cache: RepoCache = serde_json::from_str(&json).unwrap_or_default();
+                mod_cache.files.keys().cloned().collect()
+            } else {
+                HashSet::new()
+            }
+        } else {
+            HashSet::new()
+        };
+
         let is_new_repo = index.base_url != repo_cache.base_url;
         let mut update_files: Vec<RepoFile> = Vec::new();
         let mut update_size: usize = 0;
@@ -276,6 +290,12 @@ impl Updater {
         for file in index.files.iter() {
             if file.path.contains("..") || Path::new(&file.path).has_root() {
                 warn!("File path '{}' sanitized", file.path);
+                continue;
+            }
+
+            // skip files managed by the addon repo to avoid overwriting mod changes
+            if mod_managed_paths.contains(&file.path) {
+                total_size += file.size;
                 continue;
             }
 
@@ -395,9 +415,10 @@ impl Updater {
         }
         else {
             let mut mod_updates_found = false;
-            if !config.disable_mod_downloads {
+            // only cascade to mod check on non-pedantic runs, pedantic mod check has its own button
+            if !pedantic && !config.disable_mod_downloads {
                 if let Some(mod_index_url) = &config.translation_repo_index_mod {
-                    mod_updates_found = self.check_for_mod_updates(mod_index_url, pedantic, &config, &ld_dir_path)?;
+                    mod_updates_found = self.check_for_mod_updates(mod_index_url, false, &config, &ld_dir_path)?;
                 }
             }
             if !mod_updates_found {
@@ -537,6 +558,46 @@ impl Updater {
         }
 
         Ok(false)
+    }
+
+    pub fn check_for_mod_updates_only(self: Arc<Self>, pedantic: bool) {
+        std::thread::spawn(move || {
+            if let Err(e) = self.check_for_mod_updates_only_internal(pedantic) {
+                if let Some(mutex) = Gui::instance() {
+                    mutex.lock().unwrap().show_notification(&format!("{}", e));
+                }
+                info!("{}", e);
+            }
+        });
+    }
+
+    fn check_for_mod_updates_only_internal(&self, pedantic: bool) -> Result<(), Error> {
+        let Ok(_guard) = self.update_check_mutex.try_lock() else {
+            return Ok(());
+        };
+
+        let hachimi = Hachimi::instance();
+        let config = hachimi.config.load();
+        let Some(mod_index_url) = &config.translation_repo_index_mod else {
+            return Ok(());
+        };
+        let ld_dir_path = config.localized_data_dir.as_ref().map(|p| hachimi.get_data_path(p));
+
+        let checking_notif_id = if let Some(mutex) = Gui::instance() {
+            Some(mutex.lock().unwrap().show_persistent_notification(&t!("notification.checking_for_tl_updates")))
+        } else {
+            None
+        };
+        let _guard = checking_notif_id.map(NotificationGuard);
+
+        let found = self.check_for_mod_updates(mod_index_url, pedantic, &config, &ld_dir_path)?;
+        if !found {
+            if let Some(mutex) = Gui::instance() {
+                mutex.lock().unwrap().show_notification(&t!("notification.no_tl_updates"));
+            }
+        }
+
+        Ok(())
     }
 
     pub fn run(self: Arc<Self>) {
