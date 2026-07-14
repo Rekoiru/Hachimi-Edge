@@ -176,7 +176,7 @@ extern "C" fn PopulateWithErrors(
         }
 
         if config.text_debug && config.text_path_debug {
-            info!("[PopulateWithErrors] path: {}, total_overrides: {}", path, text_settings.text_properties_overrides.len());
+            info!("[PopulateWithErrors] Path: {}, Total Overrides: {}", path, text_settings.text_properties_overrides.len());
         }
 
         if let Some(props) = find_text_property_override(&text_settings.text_properties_overrides, &path) {
@@ -197,9 +197,6 @@ extern "C" fn PopulateWithErrors(
             if let Some(sf) = common.scale_factor { settings.scaleFactor = sf; }
             if let Some(fs) = common.font_style { settings.fontStyle = fs; }
             if let Some(ta) = common.text_anchor { settings.textAnchor = ta; }
-            if let Some(px) = common.pivot_x { settings.pivot.x = px; }
-            if let Some(py) = common.pivot_y { settings.pivot.y = py; }
-
             if let Some(ref override_text) = common.text_override {
                 new_str = Some(override_text);
                 has_template = override_text.contains('$');
@@ -207,7 +204,7 @@ extern "C" fn PopulateWithErrors(
 
             if common.position_offset_x.is_some() || common.position_offset_y.is_some()
                 || common.sizedelta_x.is_some() || common.sizedelta_y.is_some()
-                || common.pivot_x.is_some() || common.pivot_y.is_some()
+                || common.font_size.is_some()
                 || props.sibling_name.is_some() || props.siblings.as_ref().map(|s: &Vec<SiblingOverride>| !s.is_empty()).unwrap_or(false)
             {
                 queue_position_offset(context, this, props);
@@ -255,11 +252,19 @@ extern "C" fn PopulateWithErrors(
             } else { (0.0, 0.0) };
 
             if hashed_text.is_some() {
-                info!("[Hashed] hash: {:X}, original: {}, processed: {}, size: {}, bf: {}, ho: {}, vo: {}, rt: {}, dsx: {}, dsy: {}, ta: {}, extents: {:?}, pivot: {:?}, context: {}",
-                    hash, safe_orig, safe_processed, settings.fontSize, settings.resizeTextForBestFit, settings.horizontalOverflow, settings.verticalOverflow, settings.richText, ctx_size_delta.0, ctx_size_delta.1, settings.textAnchor, settings.generationExtents, settings.pivot, path);
+                info!("[Hashed Text] Hash: {:X}, Original: {}, Processed: {}, FontSize: {}, BestFit: {}, HorizontalOverflow: {}, VerticalOverflow: {}, RichText: {}, SizeDelta: (x: {}, y: {}), TextAnchor: {}, Extents: (x: {}, y: {}), Object: {}",
+                    hash, safe_orig, safe_processed, settings.fontSize, settings.resizeTextForBestFit,
+                    settings.horizontalOverflow, settings.verticalOverflow,
+                    settings.richText, ctx_size_delta.0, ctx_size_delta.1,
+                    settings.textAnchor,
+                    settings.generationExtents.x, settings.generationExtents.y, path);
             } else {
-                info!("[Generic] original: {}, processed: {}, size: {}, bf: {}, ho: {}, vo: {}, rt: {}, dsx: {}, dsy: {}, ta: {}, extents: {:?}, pivot: {:?}, context: {}",
-                    safe_orig, safe_processed, settings.fontSize, settings.resizeTextForBestFit, settings.horizontalOverflow, settings.verticalOverflow, settings.richText, ctx_size_delta.0, ctx_size_delta.1, settings.textAnchor, settings.generationExtents, settings.pivot, path);
+                info!("[Generic Text] Original: {}, Processed: {}, FontSize: {}, BestFit: {}, HorizontalOverflow: {}, VerticalOverflow: {}, RichText: {}, SizeDelta: (x: {}, y: {}), TextAnchor: {}, Extents: (x: {}, y: {}), Object: {}",
+                    safe_orig, safe_processed, settings.fontSize, settings.resizeTextForBestFit,
+                    settings.horizontalOverflow, settings.verticalOverflow,
+                    settings.richText, ctx_size_delta.0, ctx_size_delta.1,
+                    settings.textAnchor,
+                    settings.generationExtents.x, settings.generationExtents.y, path);
             }
         }
         orig_fn(this, processed_text.to_il2cpp_string(), settings, context)
@@ -278,8 +283,12 @@ extern "C" fn PopulateWithErrors(
                 }
             } else { (0.0, 0.0) };
 
-            info!("[Generic] {}, size: {}, bf: {}, ho: {}, vo: {}, rt: {}, dsx: {}, dsy: {}, ta: {}, extents: {:?}, pivot: {:?}, context: {}",
-                orig_s, settings.fontSize, settings.resizeTextForBestFit, settings.horizontalOverflow, settings.verticalOverflow, settings.richText, ctx_size_delta.0, ctx_size_delta.1, settings.textAnchor, settings.generationExtents, settings.pivot, path);
+            info!("[Generic Text] Original: {}, FontSize: {}, BestFit: {}, HorizontalOverflow: {}, VerticalOverflow: {}, RichText: {}, SizeDelta: (x: {}, y: {}), TextAnchor: {}, Extents: (x: {}, y: {}), Object: {}",
+                orig_s, settings.fontSize, settings.resizeTextForBestFit,
+                settings.horizontalOverflow, settings.verticalOverflow,
+                settings.richText, ctx_size_delta.0, ctx_size_delta.1,
+                settings.textAnchor,
+                settings.generationExtents.x, settings.generationExtents.y, path);
         }
         orig_fn(this, str_, settings, context)
     }
@@ -293,24 +302,23 @@ fn queue_position_offset(context: *mut Il2CppObject, fallback: *mut Il2CppObject
 
     if props.common.position_offset_x.is_some() || props.common.position_offset_y.is_some()
         || props.common.sizedelta_x.is_some() || props.common.sizedelta_y.is_some()
-        || props.common.pivot_x.is_some() || props.common.pivot_y.is_some()
         || props.common.font_size.is_some() {
         let mut transform = unsafe { (*start_obj).transform() };
         if !transform.is_null() {
             let ancestor_levels = props.position_target_ancestor.unwrap_or(0);
             if config.text_debug && config.text_position_debug {
-                debug!("[PositionOffset] QUEUE DIRECT start={:#x} name={} target_ancestor={}", transform as usize, unsafe { (*transform).name() }, ancestor_levels);
+                debug!("[PositionOffset] QUEUE DIRECT Start: {:#x} Name: {} Target Ancestor: {}", transform as usize, unsafe { (*transform).name() }, ancestor_levels);
             }
             for i in 0..ancestor_levels {
                 let parent = Transform::get_parent(transform);
                 if parent.is_null() {
-                    if config.text_debug && config.text_position_debug { debug!("[PositionOffset] QUEUE DIRECT hit null parent at level {}", i); }
+                    if config.text_debug && config.text_position_debug { debug!("[PositionOffset] QUEUE DIRECT hit null parent at level: {}", i); }
                     break;
                 }
                 transform = parent;
             }
             if config.text_debug && config.text_position_debug {
-                debug!("[PositionOffset] QUEUE DIRECT resolved_target={:#x} name={}", transform as usize, unsafe { (*transform).name() });
+                debug!("[PositionOffset] QUEUE DIRECT Resolved Target: {:#x} Name: {}", transform as usize, unsafe { (*transform).name() });
             }
             actions.push(PendingAction {
                 target: ActionTarget::Direct(transform),
@@ -348,18 +356,18 @@ fn queue_position_offset(context: *mut Il2CppObject, fallback: *mut Il2CppObject
             if anchor.is_null() { continue; }
             let ancestor_levels = sib.target_ancestor.or(props.sibling_target_ancestor).or(props.position_target_ancestor).unwrap_or(0);
             if config.text_debug && config.text_position_debug {
-                debug!("[PositionOffset] QUEUE SIBLING start={:#x} name={} target_ancestor={}", anchor as usize, unsafe { (*anchor).name() }, ancestor_levels);
+                debug!("[PositionOffset] QUEUE SIBLING start: {:#x} Name: {} Target Ancestor: {}", anchor as usize, unsafe { (*anchor).name() }, ancestor_levels);
             }
             for i in 0..ancestor_levels {
                 let parent = Transform::get_parent(anchor);
                 if parent.is_null() {
-                    if config.text_debug && config.text_position_debug { debug!("[PositionOffset] QUEUE SIBLING hit null parent at level {}", i); }
+                    if config.text_debug && config.text_position_debug { debug!("[PositionOffset] QUEUE SIBLING hit null parent at level: {}", i); }
                     break;
                 }
                 anchor = parent;
             }
             if config.text_debug && config.text_position_debug {
-                debug!("[PositionOffset] QUEUE SIBLING resolved_anchor={:#x} name={}", anchor as usize, unsafe { (*anchor).name() });
+                debug!("[PositionOffset] QUEUE SIBLING Resolved Anchor: {:#x} Name: {}", anchor as usize, unsafe { (*anchor).name() });
             }
             actions.push(PendingAction {
                 target: ActionTarget::Sibling {
@@ -416,16 +424,6 @@ fn apply_common_overrides(
     unsafe {
         let klass = (*target).klass();
         if il2cpp_class_is_assignable_from(RectTransform::class(), klass) {
-            if let Some(px) = props.pivot_x {
-                let mut pivot = RectTransform::get_pivot(target);
-                pivot.x = px;
-                RectTransform::set_pivot(target, pivot);
-            }
-            if let Some(py) = props.pivot_y {
-                let mut pivot = RectTransform::get_pivot(target);
-                pivot.y = py;
-                RectTransform::set_pivot(target, pivot);
-            }
             if let Some(sdx) = props.sizedelta_x {
                 let mut sizedelta = RectTransform::get_sizeDelta(target);
                 sizedelta.x = sdx;
@@ -451,7 +449,7 @@ fn apply_common_overrides(
                 let new_y = base_y + props.position_offset_y.unwrap_or(0.0);
 
                 if debug {
-                    debug!("[PositionOffset] APPLY transform={:#x} base=({}, {}) -> new=({}, {})",
+                    debug!("[PositionOffset] APPLY transform: {:#x} Base: ({}, {}) -> New: ({}, {})",
                         key, base_x, base_y, new_x, new_y);
                 }
 
@@ -511,19 +509,19 @@ pub fn drain_pending_offsets() {
                 ActionTarget::Sibling { anchor, name } => {
                     if anchor.is_null() || !Object::IsNativeObjectAlive(anchor) { continue; }
                     if config.text_debug && config.text_position_debug {
-                        debug!("[SiblingOffset] DRAIN SIBLING anchor={:#x} name={} searching for={}", anchor as usize, get_hierarchy_path(anchor), name);
+                        debug!("[SiblingOffset] DRAIN SIBLING Anchor: {:#x} Name: {} Searching for: {}", anchor as usize, get_hierarchy_path(anchor), name);
                     }
                     for sib_name in name.split(',').map(|s| s.trim()) {
                         if sib_name.is_empty() { continue; }
                         if let Some(sibling) = find_sibling_by_name(anchor, sib_name) {
                             if config.text_debug && config.text_position_debug {
-                                debug!("[SiblingOffset] FOUND sibling={} transform={:#x}", sib_name, sibling as usize);
+                                debug!("[SiblingOffset] FOUND SIBLING: {} Transform: {:#x}", sib_name, sibling as usize);
                             }
                             apply_common_overrides(sibling, &action.properties, &mut pos_map, config.text_debug && config.text_position_debug);
                         } else if config.text_debug && config.text_position_debug {
                             let parent = Transform::get_parent(anchor);
                             let parent_name = if parent.is_null() { "null".to_string() } else { get_hierarchy_path(parent) };
-                            debug!("[SiblingOffset] NOT FOUND name={} under parent={} of anchor {:#x}", sib_name, parent_name, anchor as usize);
+                            debug!("[SiblingOffset] NOT FOUND Name: {} Under Parent: {} of Anchor: {:#x}", sib_name, parent_name, anchor as usize);
                         }
                     }
                 }
@@ -548,12 +546,11 @@ unsafe fn dump_sibling_subtree(sibling: *mut Il2CppObject, sibling_index: usize,
     let pos = RectTransform::get_anchoredPosition(sibling);
     let anchor_min = RectTransform::get_anchorMin(sibling);
     let anchor_max = RectTransform::get_anchorMax(sibling);
-    let pivot = RectTransform::get_pivot(sibling);
     let scale = Transform::get_localScale(sibling);
 
     info!(
-        "[LayoutDebug]   -> sibling[{}] depth={} name={} sizeDelta={:?} anchoredPosition={:?} anchorMin={:?} anchorMax={:?} pivot={:?} scale={:?}",
-        sibling_index, parent_depth, name, size, pos, anchor_min, anchor_max, pivot, scale
+        "[PropertyDump] Sibling[{}] Depth: {}, Name: {}, SizeDelta: (x: {}, y: {}), AnchoredPosition: (x: {}, y: {}), AnchorMin: (x: {}, y: {}), AnchorMax: (x: {}, y: {}), Scale: (x: {}, y: {}, z: {})",
+        sibling_index, parent_depth, name, size.x, size.y, pos.x, pos.y, anchor_min.x, anchor_min.y, anchor_max.x, anchor_max.y, scale.x, scale.y, scale.z
     );
 
     let child_count = Transform::get_childCount(sibling);
@@ -566,18 +563,19 @@ unsafe fn dump_sibling_subtree(sibling: *mut Il2CppObject, sibling_index: usize,
         let csize = RectTransform::get_sizeDelta(child);
         let cpos = RectTransform::get_anchoredPosition(child);
         info!(
-            "[LayoutDebug]      -> sibling[{}].child[{}] name={} sizeDelta={:?} anchoredPosition={:?}",
-            sibling_index, i, cname, csize, cpos
+            "[PropertyDump]      -> Sibling[{}].Child[{}] Name: {}, SizeDelta: (x: {}, y: {}), AnchoredPosition: (x: {}, y: {})",
+            sibling_index, i, cname, csize.x, csize.y, cpos.x, cpos.y
         );
     }
 }
 
 fn dump_properties(obj: *mut Il2CppObject, path: &str, settings: &TextGenerationSettings_t) {
     info!("[PropertyDump] --- Start Dump for: {} ---", path);
-    info!("[PropertyDump] TextGenerationSettings: fontSize={}, lineSpacing={}, horizontalOverflow={}, verticalOverflow={}, bestFit={}, minSize={}, maxSize={}, extents={:?}, pivot={:?}, scaleFactor={}",
-        settings.fontSize, settings.lineSpacing, settings.horizontalOverflow, settings.verticalOverflow,
+    info!("[PropertyDump] TextGenerationSettings - FontSize: {}, LineSpacing: {}, HorizontalOverflow: {}, VerticalOverflow: {}, BestFit: {}, MinSize: {}, MaxSize: {}, Extents: (x: {}, y: {}), ScaleFactor: {}",
+        settings.fontSize, settings.lineSpacing,
+        settings.horizontalOverflow, settings.verticalOverflow,
         settings.resizeTextForBestFit, settings.resizeTextMinSize, settings.resizeTextMaxSize,
-        settings.generationExtents, settings.pivot, settings.scaleFactor);
+        settings.generationExtents.x, settings.generationExtents.y, settings.scaleFactor);
 
     let rect_transform_obj = unsafe { (*obj).transform() };
     if !rect_transform_obj.is_null() {
@@ -587,7 +585,7 @@ fn dump_properties(obj: *mut Il2CppObject, path: &str, settings: &TextGeneration
 
                 let size = RectTransform::get_sizeDelta(rect_transform_obj);
                 let pos = RectTransform::get_anchoredPosition(rect_transform_obj);
-                info!("[PropertyDump] RectTransform sizeDelta: {:?} anchoredPosition: {:?}", size, pos);
+                info!("[PropertyDump] RectTransform - SizeDelta: (x: {}, y: {}), AnchoredPosition: (x: {}, y: {})", size.x, size.y, pos.x, pos.y);
 
                 let mut curr = rect_transform_obj;
                 let mut depth = 0;
@@ -599,12 +597,11 @@ fn dump_properties(obj: *mut Il2CppObject, path: &str, settings: &TextGeneration
                     let pos = RectTransform::get_anchoredPosition(curr);
                     let anchor_min = RectTransform::get_anchorMin(curr);
                     let anchor_max = RectTransform::get_anchorMax(curr);
-                    let pivot = RectTransform::get_pivot(curr);
                     let scale = Transform::get_localScale(curr);
 
                     info!(
-                        "[LayoutDebug] depth={} name={} sizeDelta={:?} anchoredPosition={:?} anchorMin={:?} anchorMax={:?} pivot={:?} scale={:?}",
-                        depth, name, size, pos, anchor_min, anchor_max, pivot, scale
+                        "[PropertyDump] Depth: {}, Name: {}, SizeDelta: (x: {}, y: {}), AnchoredPosition: (x: {}, y: {}), AnchorMin: (x: {}, y: {}), AnchorMax: (x: {}, y: {}), Scale: (x: {}, y: {}, z: {})",
+                        depth, name, size.x, size.y, pos.x, pos.y, anchor_min.x, anchor_min.y, anchor_max.x, anchor_max.y, scale.x, scale.y, scale.z
                     );
 
                     let parent = Transform::get_parent(curr);
