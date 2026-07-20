@@ -82,7 +82,7 @@ first_time_setup:
   welcome_heading: "Welcome"
   welcome_content: >-
     Hachimi has been installed! This will guide you through the initial setup process.
-    If you're not interested in using the translation features, you may skip it by closing this dialog.
+    If you're not interested in using the translation feature, you may skip it by closing this dialog.
 
 
     DISCLAIMER: Hachimi is a community-driven project. All translations were made by various community contributors.
@@ -152,7 +152,7 @@ config_editor:
   skip_first_time_setup: "Skip first time setup"
   lazy_translation_updates: "Lazy translation updates"
   disable_auto_update_check: "Disable auto update check"
-  disable_mod_downloads: "Disable translation addons downloads"
+  disable_mod_downloads: "Disable translation addon downloads"
   disable_translations: "Disable translations"
   enable_ipc: "Enable IPC"
   ipc_listen_all: "IPC listen all"
@@ -165,7 +165,7 @@ config_editor:
     additional translation will happen and gameplay may be affected.
     Please leave this option disabled if you do not have a translation
     server available.
-  auto_translate_ui: "Auto translate UI (MIGHT BREAK UIs)"
+  auto_translate_ui: "Auto translate UI (MIGHT BREAK THE UI)"
   target_fps: "Target FPS"
   virtual_resolution_multiplier: "Virtual resolution multiplier"
   ui_scale: "UI scale"
@@ -190,11 +190,11 @@ config_editor:
   live_theater_allow_same_chara: "Live theater allow same chara"
   physics_update_mode: "Physics update mode"
   disable_skill_name_translation: "Disable skill name translation"
-  hide_ingame_ui_hotkey: "Hide ingame UI hotkey"
+  hide_ingame_ui_hotkey: "Hide in-game UI hotkey"
   hide_ingame_ui_hotkey_info: >-
-    This option allows a shortcut key to toggle the ingame UI.
-    For Android, you need to double tap the Volume Up key, or triple tap the top right of the screen.
-    For PC/Android with keyboard, it's the Insert key and can be configured in the gui or config.
+    This option allows a shortcut key to toggle the in-game UI.
+    For Android, you need to double-tap the Volume Up key, or triple-tap the top right part of the screen.
+    For PC/Android with keyboard, it's the Insert key, which can be configured in the GUI or config.
   discord_rpc: "Discord RPC"
   menu_open_key: "Open menu hotkey"
   menu_open_key_set: "Press to set"
@@ -241,8 +241,8 @@ updating_dialog:
 steam_overlay_conflict_dialog:
   title: "Notice"
   content: >-
-    Purchases might not work with the Hachimi overlay enabled. If the Steam overlay already showed
-    up for you to make a purchase, please ignore this message and press No. If it didn't work, press Yes
+    Purchases might not work with the Hachimi overlay enabled. If the Steam overlay already appeared
+    for you to make a purchase, please ignore this message and press No. If it didn't work, press Yes
     to temporarily disable the Hachimi overlay. It will close the game, and the next time the game starts up,
     the Hachimi overlay will be disabled and you will be able to make a purchase. After that, you may restart
     the game again to re-enable the Hachimi overlay.
