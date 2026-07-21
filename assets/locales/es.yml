@@ -4,7 +4,7 @@ windows:
   menu_open_key: "Flecha derecha"
 
 android:
-  menu_open_key: "Subir volumen y Bajar volumen\n\uf25a o Tres toques en la esquina superior izquierda"
+  menu_open_key: "Subir volumen y Bajar volumen\n\uf25a o tres toques en la esquina superior izquierda"
 
 splash_sub: "\uf015 Pulsa %{open_key_str} para abrir el menú."
 loading_label: "Cargando..."

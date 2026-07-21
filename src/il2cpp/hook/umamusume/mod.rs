@@ -74,6 +74,7 @@ pub mod TweenAnimationTimelineSheetData;
 pub mod StoryParamChangeEffect;
 pub mod DialogSupportCardDetail;
 pub mod DialogOptionHome;
+pub mod LiveStreamingCommentScriptableObject;
 
 #[cfg(target_os = "windows")]
 pub mod SceneManager;
@@ -159,6 +160,7 @@ pub fn init() {
     StoryParamChangeEffect::init(image);
     DialogSupportCardDetail::init(image);
     DialogOptionHome::init(image);
+    LiveStreamingCommentScriptableObject::init(image);
     
     #[cfg(target_os = "windows")]
     {

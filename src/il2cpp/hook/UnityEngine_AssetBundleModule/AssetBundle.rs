@@ -9,7 +9,7 @@ use crate::{
     core::{ext::Utf16StringExt, gui::Gui, hachimi::{AssetMetadata, Hachimi}},
     il2cpp::{
         api::il2cpp_resolve_icall, ext::{Il2CppObjectExt, Il2CppStringExt}, hook::{
-            umamusume::{StoryParamChangeEffect, StoryRaceTextAsset, StoryTimelineData, TextDotData, TextRubyData},
+            umamusume::{StoryParamChangeEffect, StoryRaceTextAsset, StoryTimelineData, TextDotData, TextRubyData, LiveStreamingCommentScriptableObject},
             Cute_UI_Assembly::AtlasReference,
             UnityEngine_CoreModule::{GameObject, Texture2D, Object}
         }, symbols::GCHandle, types::*
@@ -114,6 +114,9 @@ pub fn on_LoadAsset(bundle: *mut Il2CppObject, asset: *mut Il2CppObject, name: *
     }
     else if class == StoryParamChangeEffect::class() {
         StoryParamChangeEffect::on_LoadAsset
+    }
+    else if class == LiveStreamingCommentScriptableObject::class() {
+        LiveStreamingCommentScriptableObject::on_LoadAsset
     }
     else {
         return;
