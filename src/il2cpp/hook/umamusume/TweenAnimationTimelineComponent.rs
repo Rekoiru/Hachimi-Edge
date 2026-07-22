@@ -1,8 +1,8 @@
 use fnv::FnvHashSet;
 use widestring::Utf16Str;
 
-use crate::{il2cpp::{api::{il2cpp_class_get_type, il2cpp_type_get_object}, hook::{Plugins::AnimateToUnity::AnRoot, UnityEngine_CoreModule::{GameObject, Object}}, symbols::{IList, get_method_addr}, types::*, ext::Il2CppStringExt}, core::{hachimi::AssetInfo, Hachimi}};
-use super::{TweenAnimationTimelineData, TweenAnimationTimelineSheetData};
+use crate::{il2cpp::{api::{il2cpp_class_get_type, il2cpp_type_get_object}, hook::{Plugins::AnimateToUnity::AnRoot, UnityEngine_AssetBundleModule::AssetBundle, UnityEngine_CoreModule::{GameObject, Object, Component, Sprite}, UnityEngine_UI::Image}, symbols::{IList, get_method_addr}, types::*, ext::Il2CppStringExt, utils::replace_texture_with_diff}, core::{ext::Utf16StringExt, hachimi::AssetInfo, Hachimi}};
+use super::{TweenAnimationTimelineData, TweenAnimationTimelineSheetData, ImageCommon};
 
 static mut TYPE_OBJECT: *mut Il2CppObject = 0 as _;
 pub fn type_object() -> *mut Il2CppObject {
@@ -12,7 +12,7 @@ pub fn type_object() -> *mut Il2CppObject {
 static mut GETTIMELINEDATA_ADDR: usize = 0;
 impl_addr_wrapper_fn!(GetTimelineData, GETTIMELINEDATA_ADDR, *mut Il2CppObject, this: *mut Il2CppObject);
 
-pub fn on_LoadAsset(_bundle: *mut Il2CppObject, this: *mut Il2CppObject, _name: &Utf16Str) {
+pub fn on_LoadAsset(_bundle: *mut Il2CppObject, this: *mut Il2CppObject, name: &Utf16Str) {
     let timeline_data = GetTimelineData(this);
     let Some(sheet_data_list) = IList::new(TweenAnimationTimelineData::get_SheetDataList(timeline_data)) else {
         return;
@@ -47,6 +47,50 @@ pub fn on_LoadAsset(_bundle: *mut Il2CppObject, this: *mut Il2CppObject, _name: 
                 AnRoot::patch_asset(root, asset_info.data.as_ref(), &base_path);
             }
         }
+    }
+
+    // Replace embedded textures in ImageCommon children
+    if !name.starts_with(AssetBundle::ASSET_PATH_PREFIX) {
+        return;
+    }
+
+    let orig_path = name[AssetBundle::ASSET_PATH_PREFIX.len()..].to_string();
+    let dir_path = match orig_path.rfind('/') {
+        Some(pos) => &orig_path[..pos],
+        None => return,
+    };
+
+    let game_object = Component::get_gameObject(this);
+    let image_commons = GameObject::GetComponentsInChildren(game_object, ImageCommon::type_object(), true);
+    let image_commons_slice = unsafe { image_commons.as_slice() };
+
+    let mut replaced_textures = FnvHashSet::default();
+
+    for img in image_commons_slice {
+        let sprite = Image::get_sprite(*img);
+        if sprite.is_null() {
+            continue;
+        }
+
+        let texture = Sprite::get_texture(sprite);
+        if texture.is_null() || !replaced_textures.insert(texture as usize) {
+            continue;
+        }
+
+        let Some(tex_name_ptr) = (unsafe { Object::get_name(texture).as_ref() }) else {
+            continue;
+        };
+        let tex_name = tex_name_ptr.as_utf16str().to_string();
+        if tex_name.is_empty() {
+            continue;
+        }
+
+        let rel_replace_path = format!("textures/{}/{}.png", dir_path, tex_name);
+        let Some(replace_path) = localized_data.get_assets_path(&rel_replace_path) else {
+            continue;
+        };
+
+        replace_texture_with_diff(texture, &replace_path, true);
     }
 }
 
