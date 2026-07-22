@@ -59,10 +59,10 @@ pub fn on_LoadAsset(bundle: *mut Il2CppObject, this: *mut Il2CppObject, name: &U
     let rel_name = &name[ASSET_PATH_PREFIX.len()..];
     let base_path = rel_name.path_basename();
     let base_path_str = base_path.to_string();
-    if !base_path_str.starts_with("ast_comment_") {
+    if !base_path_str.contains("ast_comment_") {
         return;
     }
-    let dict_path = base_path.to_string().replace("ast_comment_", "comment_") + ".json";
+    let dict_path = base_path_str.replace("ast_comment_", "comment_") + ".json";
 
     let localized_data = Hachimi::instance().localized_data.load();
     let asset_info: AssetInfo<LiveStreamingCommentScriptableObjectData> =
