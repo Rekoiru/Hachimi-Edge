@@ -11,7 +11,7 @@ use crate::{
     }
 };
 
-use super::{StoryTimelineBlockData, StoryTimelineTextClipData, StoryTimelineTrackData};
+use super::{StoryTimelineBlockData, StoryTimelineLiveStreamingClipData, StoryTimelineTextClipData, StoryTimelineTrackData};
 
 const CLIP_TEXT_LINE_WIDTH: i32 = 21;
 const CLIP_TEXT_LINE_COUNT: i32 = 3;
@@ -88,6 +88,10 @@ struct TextBlockDict {
     #[serde(alias = "ColorTextInfoList")]
     #[serde(default)]
     color_text_info_list: Vec<String>,
+
+    #[serde(alias = "PriorityCommentList")]
+    #[serde(default)]
+    priority_comment_list: Vec<String>,
 
     new_clip_length: Option<i32>
 }
@@ -199,6 +203,23 @@ pub fn on_LoadAsset(_bundle: *mut Il2CppObject, this: *mut Il2CppObject, name: &
             warn!("text block {} not found in dict: {}", i, dict_path);
             break;
         };
+
+        // Check live streaming clip first, independent of text clip
+        if let Some(live_clip) = StoryTimelineBlockData::get_live_streaming_clip(block_data) {
+            let priority_comment_list_obj = StoryTimelineLiveStreamingClipData::get_PriorityCommentList(live_clip);
+            if let Some(priority_comment_list) = IList::<*mut Il2CppString>::new(priority_comment_list_obj) {
+                for (j, _comment_obj) in priority_comment_list.iter().enumerate() {
+                    if let Some(text) = text_block_dict.priority_comment_list.get(j) {
+                        if !text.is_empty() {
+                            priority_comment_list.set(j as i32, text.to_il2cpp_string());
+                        }
+                    }
+                    else {
+                        warn!("priority comment {} of block {} not found in dict: {}", j, i, dict_path);
+                    }
+                }
+            }
+        }
 
         let Some(clip_data) = StoryTimelineBlockData::get_text_clip(block_data) else {
             continue;
@@ -418,6 +439,22 @@ fn generate_auto_tl_dict(this: *mut Il2CppObject) -> Result<StoryTimelineDataDic
     for block_data in block_list.iter().skip(1) {
         let mut block_dict = TextBlockDict::default();
 
+        // Check live streaming clip first, independent of text clip
+        if let Some(live_clip) = StoryTimelineBlockData::get_live_streaming_clip(block_data) {
+            let priority_comment_list_obj = StoryTimelineLiveStreamingClipData::get_PriorityCommentList(live_clip);
+            if let Some(priority_comment_list) = IList::<*mut Il2CppString>::new(priority_comment_list_obj) {
+                for comment in priority_comment_list.iter() {
+                    block_dict.priority_comment_list.push(String::new());
+                    if !comment.is_null() && unsafe { (*comment).length > 0 } {
+                        tl_batch.push(unsafe { (*comment).as_utf16str().to_string() });
+                    }
+                    else {
+                        tl_batch.push(String::new());
+                    }
+                }
+            }
+        }
+
         let Some(clip_data) = StoryTimelineBlockData::get_text_clip(block_data) else {
             dict.text_block_list.push(block_dict);
             continue;
@@ -510,6 +547,12 @@ fn generate_auto_tl_dict(this: *mut Il2CppObject) -> Result<StoryTimelineDataDic
         for color_text in block_dict.color_text_info_list.iter_mut() {
             if let Some(text) = tl_iter.next() {
                 *color_text = text;
+            }
+        }
+
+        for priority_comment in block_dict.priority_comment_list.iter_mut() {
+            if let Some(text) = tl_iter.next() {
+                *priority_comment = text;
             }
         }
     }

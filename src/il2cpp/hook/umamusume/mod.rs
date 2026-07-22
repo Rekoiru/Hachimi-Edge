@@ -74,6 +74,7 @@ pub mod TweenAnimationTimelineSheetData;
 pub mod StoryParamChangeEffect;
 pub mod DialogSupportCardDetail;
 pub mod DialogOptionHome;
+pub mod StoryTimelineLiveStreamingClipData;
 pub mod LiveStreamingCommentScriptableObject;
 
 #[cfg(target_os = "windows")]
@@ -124,6 +125,7 @@ pub fn init() {
     StoryChoiceController::init(image);
     StoryViewController::init(image);
     StoryTimelineClipData::init(image);
+    StoryTimelineLiveStreamingClipData::init(image);
     StoryTimelineCharaTrackData::init(image);
     CharacterNoteTopView::init(image);
     CharacterNoteTopViewController::init(image);
