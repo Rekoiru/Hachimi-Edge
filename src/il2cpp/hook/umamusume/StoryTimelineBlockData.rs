@@ -1,7 +1,8 @@
 use std::ptr::null_mut;
 
-use crate::il2cpp::{
-    ext::Il2CppObjectExt, symbols::{get_field_from_name, get_field_object_value, get_field_value, set_field_value, IList}, types::*
+use crate::{
+    core::{game::Region, Hachimi},
+    il2cpp::{ext::Il2CppObjectExt, symbols::{get_field_from_name, get_field_object_value, get_field_value, set_field_value, IList}, types::*}
 };
 
 use super::{StoryTimelineLiveStreamingClipData, StoryTimelineTextClipData, StoryTimelineTrackData};
@@ -83,9 +84,11 @@ pub fn init(umamusume: *const Il2CppImage) {
 
     unsafe {
         TEXTTRACK_FIELD = get_field_from_name(StoryTimelineBlockData, c"TextTrack");
-        LIVESTREAMINGTRACK_FIELD = get_field_from_name(StoryTimelineBlockData, c"LiveStreamingTrack");
         BLOCKLENGTH_FIELD = get_field_from_name(StoryTimelineBlockData, c"BlockLength");
         CHARACTERTRACKLIST_FIELD = get_field_from_name(StoryTimelineBlockData, c"CharacterTrackList");
         SCREENEFFECTTRACKLIST_FIELD = get_field_from_name(StoryTimelineBlockData, c"ScreenEffectTrackList");
+        if Hachimi::instance().game.region == Region::Japan {
+            LIVESTREAMINGTRACK_FIELD = get_field_from_name(StoryTimelineBlockData, c"LiveStreamingTrack");
+        }
     }
 }
