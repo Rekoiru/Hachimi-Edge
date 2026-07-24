@@ -63,7 +63,6 @@ pub mod DialogManager;
 mod CharacterHomeTopUI;
 mod CharacterHomeTopUIController;
 mod PartsGachaButton;
-mod PartsGachaButtonController;
 mod PartsHorizontalTextSet;
 mod GachaExecutableUnit;
 mod StoryChoiceButton;
@@ -151,7 +150,6 @@ pub fn init() {
     CharacterHomeTopUI::init(image);
     CharacterHomeTopUIController::init(image);
     PartsGachaButton::init(image);
-    PartsGachaButtonController::init(image);
     PartsHorizontalTextSet::init(image);
     GachaExecutableUnit::init(image);
     StoryChoiceButton::init(image);
