@@ -5,7 +5,7 @@ use serde::Deserialize;
 use widestring::Utf16Str;
 
 use crate::{
-    core::{ext::Utf16StringExt, hachimi::AssetInfo, Hachimi},
+    core::{ext::Utf16StringExt, game::Region, hachimi::AssetInfo, Hachimi},
     il2cpp::{
         api::{il2cpp_class_get_type, il2cpp_type_get_object}, ext::{Il2CppStringExt, StringExt}, hook::{UnityEngine_AssetBundleModule::AssetBundle, UnityEngine_CoreModule::Object}, symbols::{get_field_from_name, get_field_object_value, IList}, types::*, utils::replace_texture_with_diff
     }
@@ -160,12 +160,30 @@ pub fn patch_asset(this: *mut Il2CppObject, data_opt: Option<&AnRootData>, asset
         };
 
         let amp_name = unsafe { (*Object::get_name(param)).as_utf16str() };
-        let texture_sets_path = Path::new("an_texture_sets").join(&amp_name.to_string());
+        let amp_name_str = amp_name.to_string();
 
         for group in group_list.iter() {
             let texture_color = AnMeshInfoParameterGroup::get__textureSetColor(group);
             let texture_set_name = AnMeshInfoParameterGroup::get_TextureSetName(group);
             let texture_set_name_utf16 = unsafe { (*texture_set_name).as_utf16str() };
+
+            let texture_sets_path = if Hachimi::instance().game.region == Region::Japan {
+                Path::new("an_texture_sets").join(&amp_name_str)
+            } else {
+                let folder: Option<String> = if !amp_name_str.is_empty() {
+                    Some(amp_name_str.clone())
+                } else if let Some(derived) = derive_amp_folder_name(&texture_set_name_utf16.to_string()) {
+                    derived.into()
+                } else {
+                    warn!("[{}] empty AnMeshParameter name, folder undetermined for '{}'", asset_name, texture_set_name_utf16);
+                    None
+                };
+
+                match &folder {
+                    Some(f) => Path::new("an_texture_sets").join(f),
+                    None => Path::new("an_texture_sets").to_path_buf()
+                }
+            };
 
             // Try to load a replacement
             let texture_set_filename = texture_set_name_utf16.to_string() + ".png";
@@ -331,6 +349,20 @@ pub fn patch_asset(this: *mut Il2CppObject, data_opt: Option<&AnRootData>, asset
             }
         }
     }
+}
+
+// helper to build an_uMeshParam_ folder path
+fn derive_amp_folder_name(texture_set_name: &str) -> Option<String> {
+    let stripped = texture_set_name.strip_prefix("tx_uTex_")?;
+
+    let pos = stripped.rfind('_')?;
+    let suffix = &stripped[pos + 1..];
+    if suffix.is_empty() || !suffix.chars().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+
+    let base = &stripped[..pos];
+    Some(format!("as_uMeshParam_{}", base))
 }
 
 pub fn init(Plugins: *const Il2CppImage) {
