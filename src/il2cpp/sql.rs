@@ -3,7 +3,7 @@ use fnv::{FnvHashMap, FnvHashSet};
 use sqlparser::ast;
 use once_cell::sync::Lazy;
 use crate::{
-    core::{utils::{get_data_path, get_masterdb_path}, Hachimi, Interceptor},
+    core::{utils::{get_masterdb_path, get_meta_path}, Hachimi, Interceptor, game::Region},
     il2cpp::{ext::{StringExt, Il2CppStringExt}, hook::LibNative_Runtime::Sqlite3::{Connection, Query}, types::{Il2CppObject, Il2CppString}}
 };
 
@@ -203,17 +203,17 @@ impl SkillInfo {
 // All of this add column/param stuff could be simplified to two hash maps, but that's overkill.
 pub trait SelectQueryState {
     /// Adds a column to the query.
-    /// 
+    ///
     /// Implementers are expected to only track the index of columns that they need.
     fn add_column(&mut self, idx: i32, name: &str);
 
     /// Adds a placeholder parameter to the query (WHERE param = ?).
-    /// 
+    ///
     /// Index starts at 1.
     fn add_param(&mut self, idx: i32, name: &str);
 
     /// Bind an int value to a placeholder.
-    /// 
+    ///
     /// Index starts at 1.
     fn bind_int(&mut self, idx: i32, value: i32);
 
@@ -227,12 +227,12 @@ pub trait SelectQueryState {
 #[derive(Default)]
 struct Column {
     /// Index of the column in the SELECT statement.
-    /// 
+    ///
     /// Can be used to query the value later if needed.
     select_idx: Option<i32>,
 
     /// Index of the placeholder param for this column.
-    /// 
+    ///
     /// If this column's value is already binded as a param in the query, we won't need to query it later.
     param_idx: Option<i32>,
 
@@ -397,7 +397,6 @@ impl SelectQueryState for TextDataQuery {
                     _ => ()
                 };
 
-                
                 return Hachimi::instance().localized_data.load()
                     .text_data_dict
                     .get(&category)
@@ -684,10 +683,12 @@ impl MetaData {
                 return meta_read.logical_name_to_hash.get(logical_name).cloned();
             }
         }
-        
+
         let mut meta_write = META_DATA.write().unwrap();
         if meta_write.logical_name_to_hash.is_empty() {
-            if RETRIEVED_RAW_KEY.lock().unwrap().is_empty() {
+            let region = &Hachimi::instance().game.region;
+            let needs_key = *region == Region::Japan || *region == Region::Global;
+            if needs_key && RETRIEVED_RAW_KEY.lock().unwrap().is_empty() {
                 return None;
             }
             let loaded = Self::load_from_db();
@@ -698,21 +699,20 @@ impl MetaData {
 
     fn load_from_db() -> Self {
         let mut logical_name_to_hash = FnvHashMap::default();
-        let meta_path = std::path::PathBuf::from(get_data_path()).join("meta");
-        let db_path_str = meta_path.to_string_lossy().to_string();
-        
+        let db_path_str = get_meta_path();
+
         let conn = Connection::new();
         AUTO_UNLOCK_NEXT_DB.store(true, Ordering::Relaxed);
         
         if Connection::Open(conn, db_path_str.to_il2cpp_string(), std::ptr::null_mut(), std::ptr::null_mut(), 0) {
             let sql = "SELECT n, h FROM a";
             let query = Connection::Query(conn, sql.to_il2cpp_string());
-            
+
             if !query.is_null() {
                 while Query::Step(query) {
                     let path_ptr = Query::GetText(query, 0);
                     let hash_ptr = Query::GetText(query, 1);
-                    
+
                     if let (Some(path_str), Some(hash_str)) = (
                         unsafe { path_ptr.as_ref() }.map(|s| s.as_utf16str().to_string()),
                         unsafe { hash_ptr.as_ref() }.map(|s| s.as_utf16str().to_string()),
@@ -731,7 +731,7 @@ impl MetaData {
         } else {
             error!("Failed to open meta database at: {}", db_path_str);
         }
-        
+
         MetaData { logical_name_to_hash }
     }
 }
