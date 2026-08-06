@@ -59,6 +59,10 @@ pub fn get_text_clip(this: *mut Il2CppObject) -> Option<*mut Il2CppObject> {
 }
 
 pub fn get_live_streaming_clip(this: *mut Il2CppObject) -> Option<*mut Il2CppObject> {
+    if Hachimi::instance().game.region != Region::Japan {
+        return None;
+    }
+
     let live_track = get_LiveStreamingTrack(this);
     if live_track.is_null() {
         return None;

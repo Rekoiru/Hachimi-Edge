@@ -1,8 +1,11 @@
 use std::ptr::null_mut;
 
-use crate::il2cpp::{
-    symbols::{get_field_from_name, get_field_object_value},
-    types::*,
+use crate::{
+    core::{game::Region, Hachimi},
+    il2cpp::{
+        symbols::{get_field_from_name, get_field_object_value},
+        types::*,
+    },
 };
 
 static mut CLASS: *mut Il2CppClass = null_mut();
@@ -16,6 +19,10 @@ pub fn get_PriorityCommentList(this: *mut Il2CppObject) -> *mut Il2CppObject {
 }
 
 pub fn init(umamusume: *const Il2CppImage) {
+    if Hachimi::instance().game.region != Region::Japan {
+        return;
+    }
+
     get_class_or_return!(umamusume, Gallop, StoryTimelineLiveStreamingClipData);
 
     unsafe {
