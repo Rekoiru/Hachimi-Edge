@@ -37,10 +37,10 @@ fn get__outlineText(this: *mut Il2CppObject) -> *mut Il2CppObject {
     get_field_value(this, unsafe { OUTLINE_TEXT_FIELD })
 }
 
-type SetupButtonJpFn = extern "C" fn(this: *mut Il2CppObject, index: i32, text_ptr: *mut Il2CppString, charaId: i32, charaId2: i32, iconId: i32, itemId: i32);
-extern "C" fn SetupButtonJp(this: *mut Il2CppObject, index: i32, text_ptr: *mut Il2CppString, charaId: i32, charaId2: i32, iconId: i32, itemId: i32) {
+type SetupButtonJpFn = extern "C" fn(this: *mut Il2CppObject, index: i32, text_ptr: *mut Il2CppString, charaId: i32, charaId2: i32, iconId: i32, itemId: i32, dressIconId: i32);
+extern "C" fn SetupButtonJp(this: *mut Il2CppObject, index: i32, text_ptr: *mut Il2CppString, charaId: i32, charaId2: i32, iconId: i32, itemId: i32, dressIconId: i32) {
     if this.is_null() { return; }
-    get_orig_fn!(SetupButtonJp, SetupButtonJpFn)(this, index, text_ptr, charaId, charaId2, iconId, itemId);
+    get_orig_fn!(SetupButtonJp, SetupButtonJpFn)(this, index, text_ptr, charaId, charaId2, iconId, itemId, dressIconId);
     apply_multi_line_fix(this, text_ptr);
 }
 
@@ -146,7 +146,7 @@ pub fn init(umamusume: *const Il2CppImage) {
     get_class_or_return!(umamusume, Gallop, StoryChoiceButton);
 
     if Hachimi::instance().game.region == Region::Japan {
-        let SetupButton_addr = get_method_addr(StoryChoiceButton, c"SetupButton", 6);
+        let SetupButton_addr = get_method_addr(StoryChoiceButton, c"SetupButton", 7);
         new_hook!(SetupButton_addr, SetupButtonJp);
     } else {
         let SetupButton_addr = get_method_addr(StoryChoiceButton, c"SetupButton", 5);
