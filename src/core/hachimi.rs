@@ -22,6 +22,9 @@ pub struct Hachimi {
     pub interceptor: Interceptor,
     pub hooking_finished: AtomicBool,
     pub plugins: Mutex<Vec<Plugin>>,
+    pub plugin_init_callbacks: Mutex<Vec<(usize, usize)>>,
+    #[cfg(target_os = "windows")]
+    pub present_callbacks: Mutex<Vec<(usize, usize)>>,
 
     // Localized data
     pub localized_data: ArcSwap<LocalizedData>,
@@ -110,6 +113,9 @@ impl Hachimi {
             interceptor: Interceptor::default(),
             hooking_finished: AtomicBool::new(false),
             plugins: Mutex::default(),
+            plugin_init_callbacks: Mutex::default(),
+            #[cfg(target_os = "windows")]
+            present_callbacks: Mutex::default(),
 
             // Don't load localized data initially since it might fail, logging the error is not possible here
             localized_data: ArcSwap::default(),

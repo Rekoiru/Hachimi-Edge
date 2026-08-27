@@ -123,9 +123,12 @@ static PLUGIN_MENU_ITEMS: Lazy<Mutex<Vec<PluginMenuItem>>> = Lazy::new(|| Mutex:
 static PLUGIN_MENU_SECTIONS: Lazy<Mutex<Vec<PluginMenuSection>>> = Lazy::new(|| Mutex::new(Vec::new()));
 static PLUGIN_MENU_ICONS: Lazy<Mutex<HashMap<String, PluginMenuIcon>>> = Lazy::new(|| Mutex::new(HashMap::new()));
 static PLUGIN_NOTIFICATIONS: Lazy<Mutex<Vec<String>>> = Lazy::new(|| Mutex::new(Vec::new()));
+static PLUGIN_WINDOWS_TO_SHOW: Lazy<Mutex<Vec<PluginWindow>>> = Lazy::new(|| Mutex::new(Vec::new()));
+static PLUGIN_WINDOWS_TO_CLOSE: Lazy<Mutex<Vec<i32>>> = Lazy::new(|| Mutex::new(Vec::new()));
 
 pub type PluginMenuCallback = extern "C" fn(userdata: *mut c_void);
 pub type PluginMenuSectionCallback = extern "C" fn(ui: *mut c_void, userdata: *mut c_void);
+pub type PluginWindowCallback = extern "C" fn(ui: *mut c_void, userdata: *mut c_void);
 
 #[derive(Clone)]
 struct PluginMenuItem {
@@ -147,6 +150,18 @@ struct PluginMenuSection {
     callback: PluginMenuSectionCallback,
     userdata: usize
 }
+
+#[derive(Clone)]
+struct PluginWindow {
+    id: i32,
+    title: String,
+    contents_callback: Option<PluginWindowCallback>,
+    bottom_callback: Option<PluginWindowCallback>,
+    userdata: usize,
+}
+
+unsafe impl Send for PluginWindow {}
+unsafe impl Sync for PluginWindow {}
 
 pub fn register_plugin_menu_item(label: String, callback: Option<PluginMenuCallback>, userdata: *mut c_void) {
     PLUGIN_MENU_ITEMS.lock().unwrap().push(PluginMenuItem {
@@ -216,6 +231,74 @@ fn drain_plugin_notifications() -> Vec<String> {
     std::mem::take(&mut *notifications)
 }
 
+impl Window for PluginWindow {
+    fn run(&mut self, ctx: &egui::Context) -> bool {
+        let mut open = true;
+        let id = egui::Id::new("plugin_window").with(self.id);
+
+        new_window(ctx, id, &self.title)
+            .open(&mut open)
+            .show(ctx, |ui| {
+                ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
+
+                simple_window_layout(ui, id,
+                    |ui| {
+                        egui::ScrollArea::vertical().show(ui, |ui| {
+                            if let Some(callback) = self.contents_callback {
+                                let _ = panic::catch_unwind(AssertUnwindSafe(|| {
+                                    callback(ui as *mut _ as *mut c_void, self.userdata as *mut c_void);
+                                })).inspect_err(|_| error!("plugin window contents callback panicked"));
+                            }
+                        });
+                    },
+                    |ui| {
+                        if let Some(callback) = self.bottom_callback {
+                            let _ = panic::catch_unwind(AssertUnwindSafe(|| {
+                                callback(ui as *mut _ as *mut c_void, self.userdata as *mut c_void);
+                            })).inspect_err(|_| error!("plugin window bottom callback panicked"));
+                        }
+                    }
+                );
+            });
+
+        open
+    }
+
+    fn plugin_window_id(&self) -> Option<i32> { Some(self.id) }
+}
+
+pub fn show_plugin_window(
+    id: i32,
+    title: String,
+    contents_callback: Option<PluginWindowCallback>,
+    bottom_callback: Option<PluginWindowCallback>,
+    userdata: usize,
+) {
+    let window = PluginWindow {
+        id,
+        title,
+        contents_callback,
+        bottom_callback,
+        userdata,
+    };
+    
+    PLUGIN_WINDOWS_TO_SHOW.lock().unwrap().push(window);
+}
+
+pub fn close_plugin_window(id: i32) {
+    PLUGIN_WINDOWS_TO_CLOSE.lock().unwrap().push(id);
+}
+
+fn drain_plugin_windows_to_show() -> Vec<PluginWindow> {
+    let mut windows = PLUGIN_WINDOWS_TO_SHOW.lock().unwrap();
+    std::mem::take(&mut *windows)
+}
+
+fn take_plugin_windows_to_close() -> Vec<i32> {
+    let mut ids = PLUGIN_WINDOWS_TO_CLOSE.lock().unwrap();
+    std::mem::take(&mut *ids)
+}
+
 use std::sync::atomic::Ordering;
 
 #[cfg(target_os = "android")]
@@ -246,7 +329,7 @@ fn get_scale_salt(ctx: &egui::Context) -> f32 {
     ctx.data(|d| d.get_temp::<f32>(egui::Id::new("gui_scale_salt"))).unwrap_or(1.0)
 }
 
-fn get_scale(ctx: &egui::Context) -> f32 {
+pub fn get_scale(ctx: &egui::Context) -> f32 {
     ctx.data(|d| d.get_temp::<f32>(egui::Id::new("gui_scale"))).unwrap_or(1.0)
 }
 
@@ -598,6 +681,26 @@ impl Gui {
         }
     }
 
+    fn process_plugin_windows(&mut self) {
+        let new_windows = drain_plugin_windows_to_show();
+        let new_ids: Vec<i32> = new_windows.iter().map(|w| w.id).collect();
+        let close_ids = take_plugin_windows_to_close();
+
+        if !new_ids.is_empty() || !close_ids.is_empty() {
+            self.windows.retain_mut(|w| {
+                if let Some(id) = w.plugin_window_id() {
+                    !new_ids.contains(&id) && !close_ids.contains(&id)
+                } else {
+                    true
+                }
+            });
+        }
+
+        for window in new_windows {
+            self.show_window(Box::new(window));
+        }
+    }
+
     pub fn run(&mut self) -> egui::FullOutput {
         if let Ok(mut lock) = PENDING_THEME.lock() {
             if let Some(config) = lock.take() {
@@ -643,6 +746,7 @@ impl Gui {
         if self.menu_visible { self.run_menu(); }
         if self.update_progress_visible { self.run_update_progress(); }
 
+        self.process_plugin_windows();
         self.run_windows();
         self.run_notifications();
 
@@ -1290,7 +1394,7 @@ impl Gui {
     }
 
     // egui's code originally (https://github.com/emilk/egui/blob/main/crates/egui/src/containers/combo_box.rs)
-    fn down_triangle_icon(painter: &egui::Painter, rect: egui::Rect, visuals: &egui::style::WidgetVisuals) {
+    pub fn down_triangle_icon(painter: &egui::Painter, rect: egui::Rect, visuals: &egui::style::WidgetVisuals) {
         let rect = egui::Rect::from_center_size(
             rect.center(),
             egui::vec2(rect.width() * 0.7, rect.height() * 0.45)
@@ -1564,6 +1668,7 @@ impl Notification {
 
 pub trait Window {
     fn run(&mut self, ctx: &egui::Context) -> bool;
+    fn plugin_window_id(&self) -> Option<i32> { None }
 }
 
 // Shared window creation function
