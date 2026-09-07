@@ -969,7 +969,7 @@ pub struct Vtable {
     pub android_dex_unload: unsafe extern "C" fn(handle: u64) -> bool,
     pub android_dex_call_static_noargs: unsafe extern "C" fn(handle: u64, method: *const c_char, sig: *const c_char) -> bool,
     pub android_dex_call_static_string: unsafe extern "C" fn(handle: u64, method: *const c_char, sig: *const c_char, arg: *const c_char) -> bool,
-    
+
     // Window management (version >= 3)
     pub gui_new_window_id: unsafe extern "C" fn() -> i32,
     pub gui_show_window: unsafe extern "C" fn(

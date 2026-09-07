@@ -26,7 +26,7 @@ enable: "Activar"
 info: "Info"
 warning: "Advertencia"
 confirm_dialog_title: "Confirmar"
-soft_restart_confirm_content: "¿Seguro que quieres realizar un reinicio suave del juego?"
+soft_restart_confirm_content: "¿Seguro que quieres realizar forzar un reinicio del juego?"
 in_game_browser_confirm_content: "¿Seguro que quieres abrir el navegador del juego?"
 browser_dialog_title: "Navegador"
 
@@ -46,14 +46,14 @@ menu:
   vsync_label: "VSync"
   stay_on_top: "Siempre visible"
   translation_heading: "\uf02d Traducción"
-  reload_localized_data: "\uf021 Recargar traducciones"
-  tl_check_for_updates: "\uf0aa Buscar actualizaciones de traducción"
-  tl_check_for_updates_pedantic: "\uf0aa Reparar traducciones"
-  addon_check_for_updates_pedantic: "\uf0aa Reparar traducciones (addons)"
+  reload_localized_data: "\uf021 Recargar traducción"
+  tl_check_for_updates: "\uf0aa Actualizar traducción"
+  tl_check_for_updates_pedantic: "\uf0aa Reparar traducción"
+  addon_check_for_updates_pedantic: "\uf0aa Reparar traducción (addons)"
   dump_localize_dict: "Exportar localize dict"
   danger_zone_heading: "\uf071 Zona Peligrosa"
   danger_zone_warning: "Las siguientes opciones podrían tener efectos adversos en el juego. ¡Úsalas con precaución!"
-  soft_restart: "\uf021 Reinicio suave"
+  soft_restart: "\uf021 Forzar reinicio"
   open_in_game_browser: "\uf0ac Abrir navegador en juego"
   toggle_game_ui: "\uf06e Alternar el UI del juego"
   discord_rpc: "Discord RPC"
@@ -64,13 +64,13 @@ notification:
   config_saved: "Configuración guardada."
   config_error: "La configuración está corrupta, se han restablecido los ajustes por defecto."
   localized_data_reloaded: "Localización recargada."
-  checking_for_tl_updates: "Buscando actualizaciones de traducción..."
-  no_tl_updates: "No hay actualizaciones."
-  update_failed: "Actualización fallida: %{reason}"
+  checking_for_tl_updates: "Buscando nuevas traducciones..."
+  no_tl_updates: "No hay nuevas traducciones."
+  update_failed: "Fallo al actualizar: %{reason}"
   update_completed: "Actualización completada."
-  errors_during_update: "Se produjeron errores al actualizar (%{count}). Comprueba los registros para más detalles."
-  checking_for_updates: "Buscando actualizaciones..."
-  no_updates: "No hay actualizaciones."
+  errors_during_update: "Han ocurrido (%{count}) errores mientras se actualizaba. Comprueba los registros para más detalles."
+  checking_for_updates: "Buscando nueva versión de Hachimi..."
+  no_updates: "Ya estás usando la última versión."
   press_to_set_menu_key: "Pulsa una tecla para establecer la tecla que abre el menú."
   menu_open_key_set: "Tecla para abrir el menú: %{key}"
   ipc_softreset_exec: "Reinicio suave remoto (IPC) ejecutado con éxito."
@@ -93,7 +93,7 @@ first_time_setup:
   translation_repo_heading: "Repositorio de traducción"
   select_translation_repo: "Selecciona un repositorio de traducción:"
   no_compatible_repo: "No se han encontrado repositorios compatibles con esta versión del juego."
-  skip_translation: "Omitir traducciones"
+  skip_translation: "No traducir"
   complete_heading: "¡Todo listo!"
   complete_content: >-
     Se ha ajustado el repositorio de traducción. Cuando pulses en Listo, se guardará
@@ -102,7 +102,7 @@ first_time_setup:
 
 about:
   title: "Acerca de"
-  copyright: "© 2024-%{year} LeadRDRK, kairusds y contribuidores"
+  copyright: "© 2024-%{year} LeadRDRK, kairusds y otros contribuidores"
   view_license: "Ver licencia"
   open_website: "Abrir sitio web"
   view_source_code: "Ver código fuente"
@@ -112,7 +112,7 @@ license:
 
 tl_updater:
   title: "Actualizando..."
-  warning: "Las traducciones dejarán de funcionar mientras se actualizan"
+  warning: "Las traducciones no estarán disponibles mientras se actualizan"
 
 config_editor:
   adjust: "Ajustar"
@@ -130,19 +130,19 @@ config_editor:
     Esta opción desactivará el overlay de Hachimi una vez reinicies el juego.
     Esto se traduce en que NO podrás acceder al Editor de Configuración tras ello.
     Si no es un cambio intencional, cierra este diálogo y DESACTIVA esta opción.
-  ipv4_only: "Usar IPv4 (sólo en ureq)"
+  ipv4_only: "Forzar IPv4 (sólo en ureq)"
   meta_index_url: "URL para las traducciones (meta)"
-  debug_mode: "Modo depuración"
+  debug_mode: "Modo de depuración"
   text_debug: "Modo de depuración de texto"
-  text_log: "Log de texto procesado"
-  text_property_dump: "Volcar propiedades de UI"
-  text_localize_dump: "Volcar cadenas localizadas"
-  text_position_debug: "Log depuración de posición"
-  text_path_debug: "Log de rutas de UI"
+  text_log: "Volcar texto procesado"
+  text_property_dump: "Volcar propiedades del UI"
+  text_localize_dump: "Volcar elementos traducidos"
+  text_position_debug: "Volcar posición del UI"
+  text_path_debug: "Volcar rutas del UI"
   enable_file_logging: "Guardar registro en un archivo"
-  localized_data_dir: "Directorio de localización"
-  apply_atlas_workaround: "Arreglo temporal para los Atlas"
-  disable_outdated_asset_notif: "Desactivar notificación de assets desactualizados"
+  localized_data_dir: "Carpeta de traducción"
+  apply_atlas_workaround: "Arreglo temporal para texturas Atlas"
+  disable_outdated_asset_notif: "No notificar elementos desactualizados"
   translator_mode: "Modo traductor"
   skip_first_time_setup: "Omitir instalación inicial"
   lazy_translation_updates: "Actualizaciones de traducciones (rápidas)"
@@ -181,7 +181,7 @@ config_editor:
   story_choice_auto_select_delay: "Retraso de selección automática (historia)"
   story_text_speed_multiplier: "Velocidad del texto (historia)"
   force_allow_dynamic_camera: "Permitir siempre la cámara dinámica"
-  live_theater_allow_same_chara: "Permitir personajes iguales en Live Theater"
+  live_theater_allow_same_chara: "Permitir personajes iguales en Concert Theater"
   physics_update_mode: "Modo de actualización de físicas"
   disable_skill_name_translation: "No traducir habilidades"
   hide_ingame_ui_hotkey: "Atajo para ocultar UI del juego"
@@ -215,19 +215,19 @@ tl_update_dialog:
   title_mod: "Actualización adicional disponible"
   content: "Existen nuevos datos de traducción (%{size}). ¿Deseas descargarlos ahora?"
   content_mod: "Existen nuevos datos de traducción adicional (%{size}). ¿Deseas descargarlos ahora?"
-  content_zip_warning: "Existen nuevos datos de traducción (%{changed_size}). Esta actualización descargará el archivo completo (%{download_size})."
+  content_zip_warning: "Existen nuevos datos de traducción (%{changed_size}). Aviso: Esta actualización descargará el archivo completo (%{download_size})."
 
 update_prompt_dialog:
-  title: "Nueva actualización disponible"
+  title: "Nueva versión disponible"
   content: |
-    Una nueva actualización de Hachimi está disponible (%{version}).
+    Una nueva versión de Hachimi se encuentra disponible (%{version}).
     ¿Quieres instalarla ahora? El juego será reiniciado para así poder
     aplicar la actualización.
   android_content: |
-    Se ha encontrado una nueva actualización de Hachimi Edge (%{version}). ¿Quieres instalarla ahora?
+    Se ha encontrado una nueva versión de Hachimi Edge (%{version}). ¿Quieres instalarla ahora?
 
-    Pulsando "Sí" se abrirá UmaPatcher Edge para que vuelvas a parchear el juego.
-    (No es necesario volver a descargar el juego o los APK, solo vuelve a parchear el juego como lo harías normalmente. UmaPatcher Edge siempre descargará la nueva versión de Hachimi Edge.)
+    Pulsando "Sí" te abrirá UmaPatcher Edge para que vuelvas a parchear el juego.
+    (Ten preparados los archivos del juego (APK) y vuelve a parchearlo como lo harías normalmente. UmaPatcher Edge siempre descargará la nueva versión de Hachimi Edge.)
 
 updating_dialog:
   title: "Actualizando"
