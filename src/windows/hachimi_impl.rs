@@ -63,6 +63,10 @@ pub struct Config {
     pub menu_open_key: u16,
     #[serde(default = "Config::default_hide_ingame_ui_hotkey_bind")]
     pub hide_ingame_ui_hotkey_bind: u16,
+    #[serde(default = "Config::default_race_stat_hud_toggle_key")]
+    pub race_stat_hud_toggle_key: u16,
+    #[serde(default)]
+    pub race_stat_hud_landscapeui_portrait: bool,
     #[serde(default)]
     pub auto_full_screen: bool,
     #[serde(default, alias = "freeFormWindow")]
@@ -87,6 +91,8 @@ pub struct Config {
     pub taskbar_show_progress_on_download: bool,
     #[serde(default)]
     pub taskbar_show_progress_on_connecting: bool,
+    #[serde(default)]
+    pub taskbar_show_progress_on_schedule_book: bool,
     #[serde(default = "Config::default_true")]
     pub enable_smtc: bool,
     #[serde(default = "Config::default_true")]
@@ -97,12 +103,17 @@ pub struct Config {
     pub gui_landscape_ratio: f32,
     #[serde(default)]
     pub custom_title_name: Option<String>,
+    #[serde(default)]
+    pub ingame_webview: bool,
+    #[serde(default)]
+    pub free_camera: super::free_camera::FreeCameraConfig,
 }
 
 impl Config {
     fn default_vsync_count() -> i32 { -1 }
     fn default_menu_open_key() -> u16 { windows::Win32::UI::Input::KeyboardAndMouse::VK_RIGHT.0 }
     fn default_hide_ingame_ui_hotkey_bind() -> u16 { windows::Win32::UI::Input::KeyboardAndMouse::VK_INSERT.0 }
+    fn default_race_stat_hud_toggle_key() -> u16 { windows::Win32::UI::Input::KeyboardAndMouse::VK_H.0 }
     fn default_true() -> bool { true }
     fn default_gui_landscape_ratio() -> f32 { 1.0 }
     fn default_freeform_ui_scale_auto_ratio() -> f32 { 0.55 }

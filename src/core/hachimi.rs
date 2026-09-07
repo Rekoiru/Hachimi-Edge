@@ -15,6 +15,7 @@ pub const CODEBERG_API: &str = "https://codeberg.org/api/v1/repos";
 pub const WEBSITE_URL: &str = "https://hachimi.noccu.art";
 pub const UMAPATCHER_PACKAGE_NAME: &str = "com.leadrdrk.umapatcher.edge";
 pub const UMAPATCHER_INSTALL_URL: &str = "https://github.com/kairusds/UmaPatcher-Edge/releases/latest";
+pub const RACE_MECHANICS_URL: &str = "https://docs.google.com/document/d/15VzW9W2tXBBTibBRbZ8IVpW6HaMX8H0RP03kq6Az7Xg";
 
 static mut ORIG_SQLITE3_OPEN_V2: Option<extern "C" fn(*const i8, *mut *mut std::ffi::c_void, i32, *const i8) -> i32> = None;
 static mut ORIG_SQLITE3_KEY: Option<extern "C" fn(*mut std::ffi::c_void, *const std::ffi::c_void, i32) -> i32> = None;
@@ -264,13 +265,20 @@ impl Hachimi {
             config.localized_data_dir.as_ref().map(|p| self.game.data_dir.join(p))
         });
 
-        let new_data = match LocalizedData::new(&self.config.load(), ld_path) {
+        let mut new_data = match LocalizedData::new(&self.config.load(), ld_path) {
             Ok(v) => v,
             Err(e) => {
                 error!("Failed to load localized data: {}", e);
                 return;
             }
         };
+
+        if self.game.region == Region::Global {
+            for id in 55..=66 {
+                new_data.localize_dict.remove(&format!("Common{id:04}"));
+            }
+        }
+        
         self.localized_data.store(Arc::new(new_data));
     }
 
@@ -729,15 +737,13 @@ pub struct Config {
     #[serde(default)]
     pub force_allow_dynamic_camera: bool,
     #[serde(default)]
-    pub free_camera: crate::core::free_camera::FreeCameraConfig,
-    #[serde(default)]
     pub live_theater_allow_same_chara: bool,
     #[serde(default = "Config::default_live_vocals_swap")]
     pub live_vocals_swap: [i32; 6],
     #[serde(default)]
     pub skill_info_dialog: bool,
     #[serde(default)]
-    pub homescreen_bgseason: crate::il2cpp::hook::umamusume::TimeUtil::BgSeason,
+    pub homescreen_bgseason: crate::il2cpp::hook::umamusume::GameDefine::BgSeason,
     pub sugoi_url: Option<String>,
     #[serde(default)]
     pub auto_translate_stories: bool,
@@ -747,8 +753,30 @@ pub struct Config {
     pub disable_skill_name_translation: bool,
     #[serde(default)]
     pub hide_ingame_ui_hotkey: bool,
+    #[serde(default)]
+    pub race_stat_hud: bool,
+    #[serde(default)]
+    pub race_stat_hud_toggle_button: bool,
+    #[serde(default)]
+    pub race_stat_had_autoscroll_0: bool,
+    #[serde(default)]
+    pub race_stat_had_autoscroll_1: bool,
+    #[serde(default)]
+    pub race_stat_hud_draggable: bool,
+    #[serde(default)]
+    pub race_stat_hud_draggable_save: bool,
+    #[serde(default = "Config::default_race_stat_hud_drag_x")]
+    pub race_stat_hud_drag_x: f32,
+    #[serde(default = "Config::default_race_stat_hud_drag_y")]
+    pub race_stat_hud_drag_y: f32,
+    #[serde(default = "Config::default_race_stat_hud_width_scale")]
+    pub race_stat_hud_width_scale: f32,
+    #[serde(default = "Config::default_race_stat_hud_height_scale")]
+    pub race_stat_hud_height_scale: f32,
     #[serde(flatten)]
     pub caption: CaptionConfig,
+    #[serde(default)]
+    pub disable_tap_effect: bool,
     #[serde(default)]
     pub language: Language,
     #[serde(default = "Config::default_meta_index_url")]
@@ -760,6 +788,8 @@ pub struct Config {
     pub cyspring_mono_uncap_frame_scale: bool,
     #[serde(default = "Config::default_ui_animation_scale")]
     pub ui_animation_scale: f32,
+    #[serde(default)]
+    pub trainer_live_landscape: bool,
     #[serde(default)]
     pub live_slider_always_show: bool,
     #[serde(default)]
@@ -820,6 +850,10 @@ impl Config {
     pub fn default_text_color() -> egui::Color32 { egui::Color32::from_gray(170) }
     pub fn default_window_rounding() -> f32 { 10.0 }
     fn default_tl_auto_updater_interval_sec() -> u64 { 3600 }
+    fn default_race_stat_hud_drag_x() -> f32 { -1.0 }
+    fn default_race_stat_hud_drag_y() -> f32 { -1.0 }
+    fn default_race_stat_hud_width_scale() -> f32 { 1.0 }
+    fn default_race_stat_hud_height_scale() -> f32 { 1.0 }
 }
 
 impl Default for Config {
@@ -872,7 +906,13 @@ pub enum Language {
     BPortuguese,
 
     #[serde(rename = "fil")]
-    Filipino
+    Filipino,
+
+    #[serde(rename = "ru")]
+    Russian,
+
+    #[serde(rename = "ko")]
+    Korean
 }
 
 impl Default for Language {
@@ -892,6 +932,10 @@ impl Default for Language {
             Self::BPortuguese
         } else if locale.starts_with("fil") {
             Self::Filipino
+        } else if locale.starts_with("ru") {
+            Self::Russian
+        } else if locale.starts_with("ko") {
+            Self::Korean
         } else {
             Self::English
         }
@@ -907,7 +951,9 @@ impl Language {
         Self::Indonesian.choice(),
         Self::Spanish.choice(),
         Self::BPortuguese.choice(),
-        Self::Filipino.choice()
+        Self::Filipino.choice(),
+        Self::Russian.choice(),
+        Self::Korean.choice()
     ];
 
     pub fn set_locale(&self) {
@@ -923,7 +969,9 @@ impl Language {
             Language::Indonesian => "id",
             Language::Spanish => "es",
             Language::BPortuguese => "pt-br",
-            Language::Filipino => "fil"
+            Language::Filipino => "fil",
+            Language::Russian => "ru",
+            Language::Korean => "ko"
         }
     }
 
@@ -936,7 +984,9 @@ impl Language {
             Language::Indonesian => "Bahasa Indonesia",
             Language::Spanish => "Español (ES)",
             Language::BPortuguese => "Português (Brasil)",
-            Language::Filipino => "Filipino"
+            Language::Filipino => "Filipino",
+            Language::Russian => "Русский",
+            Language::Korean => "한국어"
         }
     }
 
@@ -1116,7 +1166,8 @@ impl LocalizedData {
     }
 
     pub fn load_custom_story_ruby(&self, ast_ruby_name: &str) -> Option<Vec<CustomRubyBlock>> {
-        let filename = ast_ruby_name.split('/').last().unwrap_or(ast_ruby_name);
+        // let filename = ast_ruby_name.split('/').last().unwrap_or(ast_ruby_name);
+        let filename = ast_ruby_name.split('/').next_back().unwrap_or(ast_ruby_name);
 
         let filename_no_ext = filename.strip_suffix(".asset").unwrap_or(filename);
 

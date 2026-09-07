@@ -1,6 +1,7 @@
 use std::{
     borrow::Cow,
     collections::HashMap,
+    fmt::Write as _,
     ops::RangeInclusive,
     os::raw::c_void,
     panic::{self, AssertUnwindSafe},
@@ -18,10 +19,23 @@ use chrono::{Utc, Datelike};
 use crate::il2cpp::{
     ext::StringExt,
     hook::{
-        umamusume::{CameraData::ShadowResolution, CySpringController::SpringUpdateMode, Director, GameSystem, GraphicSettings::{GraphicsQuality, MsaaQuality}, Localize, TimeUtil::BgSeason, SceneManager as UmaSceneManager},
+        umamusume::{
+            CameraData::ShadowResolution,
+            CySpringController::SpringUpdateMode,
+            Director,
+            GameSystem,
+            GraphicSettings::{GraphicsQuality, MsaaQuality},
+            Localize,
+            GameDefine::BgSeason,
+            RaceDefine::{HorsePhase, LaneType},
+            TemptationMode,
+            SimulateEventType,
+            SceneManager as UmaSceneManager
+        },
         UnityEngine_CoreModule::{Application, Texture::AnisoLevel}
     },
-    symbols::Thread
+    symbols::Thread,
+    types::{Il2CppObject, Il2CppString}
 };
 
 #[cfg(target_os = "android")]
@@ -29,20 +43,21 @@ use crate::il2cpp::{
     ext::Il2CppStringExt,
     hook::{umamusume::WebViewManager, UnityEngine_CoreModule::{TouchScreenKeyboard, TouchScreenKeyboardType}},
     symbols::GCHandle,
-    types::{Il2CppObject, Il2CppString, RangeInt}
+    types::*
 };
 
 #[cfg(target_os = "windows")]
 use crate::il2cpp::hook::UnityEngine_CoreModule::QualitySettings;
+#[cfg(target_os = "windows")]
+use crate::windows::free_camera::{self, FreeCameraMode};
 
 use super::{
-    free_camera::{self, FreeCameraMode},
     game::Region,
-    hachimi::{self, Language, REPO_PATH, WEBSITE_URL},
+    hachimi::{self, Language, REPO_PATH, WEBSITE_URL, RACE_MECHANICS_URL},
     http::{ureq_config, AsyncRequest},
     live_utils,
     tl_repo::{self, RepoInfo, LocalRepoInfo},
-    utils::{self, get_localized_string, SendPtr},
+    utils::{self, umamusume_enum_options, SendPtr},
     Hachimi
 };
 
@@ -132,6 +147,8 @@ pub struct Gui {
 
     pub update_progress_visible: bool,
 
+    live_slider_text: String,
+
     notifications: Vec<Notification>,
     next_notification_id: u32,
     windows: Vec<BoxedWindow>,
@@ -145,6 +162,1698 @@ pub static GUI_INPUT_ACTIVE: AtomicBool = AtomicBool::new(false);
 pub static WANTS_INPUT: AtomicBool = AtomicBool::new(false);
 pub static IS_LIVE_SCENE: AtomicBool = AtomicBool::new(false);
 pub static IS_LIVE_SLIDER_ACTIVE: AtomicBool = AtomicBool::new(false);
+
+static TOGGLE_RACE_STAT_HUD_REQUESTED: AtomicBool = AtomicBool::new(false);
+static RACE_STAT_HUD: Lazy<Mutex<RaceStatHud>> = Lazy::new(|| Mutex::new(RaceStatHud::new()));
+
+pub fn toggle_race_stat_hud() {
+    TOGGLE_RACE_STAT_HUD_REQUESTED.store(true, atomic::Ordering::Release);
+}
+
+// portrait: full width, fixed at 38% of the screen height
+#[cfg(target_os = "android")]
+const RACE_STAT_HUD_PORTRAIT_HEIGHT_RATIO: f32 = 0.38;
+// landscape: fixed at 40% of the screen width and 55% of the screen height
+#[cfg(target_os = "android")]
+const RACE_STAT_HUD_LANDSCAPE_WIDTH_RATIO: f32 = 0.4;
+#[cfg(target_os = "android")]
+const RACE_STAT_HUD_LANDSCAPE_HEIGHT_RATIO: f32 = 0.55;
+
+#[cfg(target_os = "windows")]
+const RACE_STAT_HUD_SPLIT_LEFT_RATIO: f32 = 148.0 / 1920.0;
+#[cfg(target_os = "windows")]
+const RACE_STAT_HUD_SPLIT_CENTER_RATIO: f32 = 810.0 / 1920.0;
+#[cfg(target_os = "windows")]
+const RACE_STAT_HUD_FIXED_LANDSCAPE: (f32, f32) = (320.0, 198.0);
+#[cfg(target_os = "windows")]
+const RACE_STAT_HUD_FIXED_PORTRAIT: (f32, f32) = (360.0, 304.0);
+
+const RACE_STAT_HUD_WIDTH_SCALE_MIN: f32 = 0.5;
+const RACE_STAT_HUD_WIDTH_SCALE_MAX: f32 = 3.0;
+const RACE_STAT_HUD_HEIGHT_SCALE_MIN: f32 = 0.3;
+const RACE_STAT_HUD_HEIGHT_SCALE_MAX: f32 = 3.0;
+
+const RACE_STAT_HUD_DRAG_SAVE_THRESHOLD: f32 = 6.0;
+
+// evenly spaced hues for the skill chips, so adjacent ones always differ
+const SKILL_CHIP_HUES: [f32; 10] = [0.05, 0.15, 0.25, 0.35, 0.45, 0.55, 0.65, 0.75, 0.85, 0.95];
+// semantic hues for the state chips
+const STATE_CHIP_HUE_GOOD: f32 = 0.33;
+const STATE_CHIP_HUE_BAD: f32 = 0.02;
+const STATE_CHIP_HUE_CONTEST: f32 = 0.09;
+// neutral hue for the stamina keep chip (conserving hp instead of fighting)
+const STATE_CHIP_HUE_INFO: f32 = 0.58;
+// distinctive hue for the zenkai spurt chip (5th anniversary mechanic)
+const STATE_CHIP_HUE_ZENKAI: f32 = 0.75;
+
+const VALUE_CHIP_HUE_SPEED: f32 = 0.50;
+const VALUE_CHIP_HUE_DISTANCE: f32 = 0.42;
+const VALUE_CHIP_HUE_PHASE: f32 = 0.18;
+const VALUE_CHIP_HUE_ORDER: f32 = 0.24;
+const VALUE_CHIP_HUE_START_DELAY: f32 = 0.90;
+const VALUE_CHIP_HUE_FINISH: f32 = 0.13;
+const VALUE_CHIP_HUE_LANE: f32 = 0.66;
+
+// glint sweep period seconds for the zenkai spurt effect on the speed and stamina visualizers
+const ZENKAI_GLINT_PERIOD: f32 = 1.2;
+
+#[derive(Eq, PartialEq, Clone, Copy)]
+enum RaceStatHudTab {
+    Stats,
+    UsedSkills,
+    UnusedSkills
+}
+
+impl RaceStatHudTab {
+    fn display_list() -> [(RaceStatHudTab, Cow<'static, str>); 3] {
+        [
+            (RaceStatHudTab::Stats, t!("race_stat_hud.stats")),
+            (RaceStatHudTab::UsedSkills, t!("race_stat_hud.used_skills")),
+            (RaceStatHudTab::UnusedSkills, t!("race_stat_hud.unused_skills"))
+        ]
+    }
+}
+
+struct CharacterStats {
+    name: String,
+    speed: f32,
+    accel: Option<f32>,
+    min_speed: f32,
+    max_speed_in_race: f32,
+    hp: f32,
+    max_hp: f32,
+    hp_drain: Option<f32>,
+    phase: HorsePhase,
+    cur_order: i32,
+    distance: f32,
+    lane: LaneType,
+    lane_distance: f32,
+    delay_time: f32,
+    is_good_start: bool,
+    is_bad_start: bool,
+    is_start_dash: bool,
+    is_clog: bool,
+    is_compete_fight: bool,
+    compete_fight_count: i32,
+    is_compete_top: bool,
+    compete_top_count: i32,
+    compete_top_remain_time: f32,
+    temptation_mode: TemptationMode,
+    temptation_count: i32,
+    is_last_spurt: bool,
+    last_spurt_start_distance: f32,
+    finish_order: i32,
+    finish_time_scaled: f32,
+    finish_time_diff: f32,
+    sim_events: SimEventStates,
+    used_skill_ids: Vec<i32>,
+    all_skill_ids: Vec<i32>
+}
+
+impl Default for CharacterStats {
+    fn default() -> CharacterStats {
+        CharacterStats {
+            name: String::new(),
+            speed: 0.0,
+            accel: None,
+            min_speed: 0.0,
+            max_speed_in_race: 0.0,
+            hp: 0.0,
+            max_hp: 0.0,
+            hp_drain: None,
+            phase: HorsePhase::RunUp,
+            cur_order: 0,
+            distance: 0.0,
+            lane: LaneType::Uti,
+            lane_distance: 0.0,
+            delay_time: 0.0,
+            is_good_start: false,
+            is_bad_start: false,
+            is_start_dash: false,
+            is_clog: false,
+            is_compete_fight: false,
+            compete_fight_count: 0,
+            is_compete_top: false,
+            compete_top_count: 0,
+            compete_top_remain_time: 0.0,
+            temptation_mode: TemptationMode::Null,
+            temptation_count: 0,
+            is_last_spurt: false,
+            last_spurt_start_distance: 0.0,
+            finish_order: 0,
+            finish_time_scaled: 0.0,
+            finish_time_diff: 0.0,
+            sim_events: SimEventStates::default(),
+            used_skill_ids: Vec::new(),
+            all_skill_ids: Vec::new()
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq)]
+struct SimEvent {
+    kind: SimulateEventType,
+    start_distance: f32,
+    finish_distance: f32
+}
+
+#[derive(Clone, Copy, Default, PartialEq)]
+struct SimEventStates {
+    release_conserve_power: bool,
+    stamina_limit_break: bool,
+    stamina_keep: bool,
+    run_at_full_speed: bool,
+    compete_before_spurt: bool,
+    compete_before_spurt_count: i32,
+    secure_lead: bool,
+    secure_lead_count: i32
+}
+
+struct RaceCourseInfo {
+    course_distance: f32,
+    phase_middle: f32,
+    phase_end: f32,
+    phase_last: f32
+}
+
+#[derive(Clone, Copy, Default)]
+struct SimRates {
+    accel: Option<f32>,
+    hp_drain: Option<f32>
+}
+
+// accel gauge range (m/s^2), typical values stay well within it
+const ACCEL_GAUGE_MAX: f32 = 5.0;
+
+// fallback scale (m/s) for the speed bar when the uma's max speed in race
+// is not available yet, the race mechanics doc caps target speed at 30 m/s
+const SPEED_BAR_MAX_FALLBACK: f32 = 30.0;
+
+// delta indicator colors, shared by the accel gauge and the hp drain rate
+const DELTA_UP_COLOR: egui::Color32 = egui::Color32::from_rgb(90, 200, 110);
+const DELTA_DOWN_COLOR: egui::Color32 = egui::Color32::from_rgb(225, 85, 85);
+
+struct RaceStatHud {
+    visible: bool,
+    elements_showing: bool,
+    selected_character: usize,
+    select_player_on_race_start: bool,
+    current_tab: RaceStatHudTab,
+    drag_pos: Option<(f32, f32)>,
+    drag_travel: f32,
+    config: hachimi::Config,
+    last_used_skills: Vec<i32>,
+    last_unused_skills: Vec<i32>,
+    skill_name_cache: HashMap<i32, String>,
+    stats_buf: Vec<CharacterStats>,
+    sim_rates_buf: Vec<SimRates>,
+    sim_events_buf: Vec<Vec<SimEvent>>,
+    unused_skills_buf: Vec<i32>,
+    chip_text: String
+}
+
+impl RaceStatHud {
+    fn new() -> RaceStatHud {
+        RaceStatHud {
+            visible: false,
+            elements_showing: false,
+            selected_character: 0,
+            select_player_on_race_start: false,
+            current_tab: RaceStatHudTab::Stats,
+            drag_pos: None,
+            drag_travel: 0.0,
+            config: (**Hachimi::instance().config.load()).clone(),
+            last_used_skills: Vec::new(),
+            last_unused_skills: Vec::new(),
+            skill_name_cache: HashMap::new(),
+            stats_buf: Vec::new(),
+            sim_rates_buf: Vec::new(),
+            sim_events_buf: Vec::new(),
+            unused_skills_buf: Vec::new(),
+            chip_text: String::new()
+        }
+    }
+
+    fn set_visible(&mut self, visible: bool) {
+        if visible && !self.visible {
+            self.config = (**Hachimi::instance().config.load()).clone();
+            self.drag_pos = Self::saved_drag_pos(&self.config);
+            self.drag_travel = 0.0;
+        }
+        if !visible && self.visible {
+            self.save_autoscroll_config();
+        }
+        self.visible = visible;
+    }
+
+    // stored drag position from the config, ignored unless both axes are
+    // normalized within [0, 1] (negative = unset / reset)
+    fn saved_drag_pos(config: &hachimi::Config) -> Option<(f32, f32)> {
+        let (x, y) = (config.race_stat_hud_drag_x, config.race_stat_hud_drag_y);
+        if (0.0..=1.0).contains(&x) && (0.0..=1.0).contains(&y) {
+            Some((x, y))
+        } else {
+            None
+        }
+    }
+
+    fn save_autoscroll_config(&mut self) {
+        let live = (**Hachimi::instance().config.load()).clone();
+        if live.race_stat_had_autoscroll_0 == self.config.race_stat_had_autoscroll_0
+            && live.race_stat_had_autoscroll_1 == self.config.race_stat_had_autoscroll_1 {
+            return;
+        }
+
+        let mut new_config = live;
+        new_config.race_stat_had_autoscroll_0 = self.config.race_stat_had_autoscroll_0;
+        new_config.race_stat_had_autoscroll_1 = self.config.race_stat_had_autoscroll_1;
+        save_and_reload_config(new_config);
+    }
+
+    fn elements_showing() -> bool {
+        if TOGGLE_RACE_STAT_HUD_REQUESTED.load(atomic::Ordering::Acquire) {
+            return true;
+        }
+
+        Self::elements_showing_locked(&RACE_STAT_HUD.lock().unwrap())
+    }
+
+    fn elements_showing_locked(hud: &RaceStatHud) -> bool {
+        use crate::il2cpp::hook::umamusume::RaceHorseManagerBase;
+
+        if Hachimi::instance().game.region != Region::Japan {
+            return false;
+        }
+
+        let config = Hachimi::instance().config.load();
+        if !config.race_stat_hud {
+            return false;
+        }
+
+        if !RaceHorseManagerBase::is_race_active() {
+            return false;
+        }
+
+        hud.visible || config.race_stat_hud_toggle_button
+    }
+
+    fn is_active() -> bool {
+        RACE_STAT_HUD.lock().unwrap().elements_showing
+    }
+
+    fn run(ctx: &egui::Context) {
+        let mut hud = RACE_STAT_HUD.lock().unwrap();
+
+        if TOGGLE_RACE_STAT_HUD_REQUESTED.swap(false, atomic::Ordering::AcqRel) {
+            let visible = !hud.visible;
+            hud.set_visible(visible);
+        }
+
+        let was_showing = hud.elements_showing;
+        hud.elements_showing = Self::elements_showing_locked(&hud);
+        if was_showing && !hud.elements_showing {
+            hud.save_autoscroll_config();
+        } else if !was_showing && hud.elements_showing {
+            hud.config = (**Hachimi::instance().config.load()).clone();
+            hud.last_used_skills.clear();
+            hud.last_unused_skills.clear();
+            hud.select_player_on_race_start = true;
+        }
+        if !hud.elements_showing {
+            return;
+        }
+
+        let toggle_button = Hachimi::instance().config.load().race_stat_hud_toggle_button;
+        let scale = get_scale(ctx);
+        let screen = ctx.viewport_rect();
+        let (game_view, split, source) = Self::game_view(ctx, screen);
+        let is_vertical = game_view.width() <= game_view.height();
+        let (width_scale, height_scale) = {
+            let config = Hachimi::instance().config.load();
+            (config.race_stat_hud_width_scale, config.race_stat_hud_height_scale)
+        };
+        let hud_scale = scale;
+        let panel = Self::panel_size(game_view, is_vertical, hud_scale, width_scale, height_scale);
+        Self::log_game_view(split, game_view, source, panel, hud_scale);
+
+        hud.run_hud(ctx, screen, game_view, panel, hud_scale, toggle_button);
+
+        if toggle_button && !hud.visible {
+            hud.run_button(ctx, game_view, hud_scale);
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    fn game_view(ctx: &egui::Context, screen: egui::Rect) -> (egui::Rect, bool, &'static str) {
+        Self::game_view_windows(screen, ctx.pixels_per_point())
+    }
+
+    #[cfg(target_os = "android")]
+    fn game_view(_ctx: &egui::Context, screen: egui::Rect) -> (egui::Rect, bool, &'static str) {
+        (screen, false, "window")
+    }
+
+    fn clamp_size_scale(v: f32, min: f32, max: f32) -> f32 {
+        if v.is_finite() { v.clamp(min, max) } else { 1.0 }
+    }
+
+    fn panel_size(game_view: egui::Rect, vertical: bool, scale: f32, width_scale: f32, height_scale: f32) -> egui::Vec2 {
+        let ws = Self::clamp_size_scale(width_scale, RACE_STAT_HUD_WIDTH_SCALE_MIN, RACE_STAT_HUD_WIDTH_SCALE_MAX);
+        let hs = Self::clamp_size_scale(height_scale, RACE_STAT_HUD_HEIGHT_SCALE_MIN, RACE_STAT_HUD_HEIGHT_SCALE_MAX);
+
+        #[cfg(target_os = "windows")]
+        let base = if vertical {
+            let (w, h) = RACE_STAT_HUD_FIXED_PORTRAIT;
+            egui::vec2(w, h)
+        } else {
+            let (w, h) = RACE_STAT_HUD_FIXED_LANDSCAPE;
+            egui::vec2(w, h)
+        };
+        #[cfg(target_os = "android")]
+        let base = if vertical {
+            // portrait: full width at the bottom of the game view
+            egui::vec2(game_view.width(), game_view.height() * RACE_STAT_HUD_PORTRAIT_HEIGHT_RATIO)
+        } else {
+            // landscape: bottom right corner of the game view
+            egui::vec2(game_view.width() * RACE_STAT_HUD_LANDSCAPE_WIDTH_RATIO, game_view.height() * RACE_STAT_HUD_LANDSCAPE_HEIGHT_RATIO)
+        };
+
+        let panel = egui::vec2(base.x * scale * ws, base.y * scale * hs);
+
+        egui::vec2(
+            panel.x.min(game_view.width().max(0.0)),
+            panel.y.min(game_view.height().max(0.0)),
+        )
+    }
+
+    #[cfg(target_os = "windows")]
+    fn game_view_windows(screen: egui::Rect, ppp: f32) -> (egui::Rect, bool, &'static str) {
+        use crate::il2cpp::hook::umamusume::{LandscapeUIManager, Screen as GallopScreen};
+
+        let window = egui::vec2(screen.width() * ppp, screen.height() * ppp);
+
+        let use_game_view = Hachimi::instance().config.load().windows.race_stat_hud_landscapeui_portrait;
+        if !use_game_view || !GallopScreen::get_IsSplitWindow() {
+            return (screen, false, "window");
+        }
+
+        let mut source = "constants";
+        let mut rect_px = Self::split_rect_constants(window);
+
+        if let Some((x, y, w, h)) = LandscapeUIManager::game_screen_info() {
+            let physical = (h - window.y).abs() <= window.y * 0.02;
+            let rate = LandscapeUIManager::get_WindowScaleRate();
+            let (r, src) = if physical {
+                (egui::Rect::from_min_size(egui::pos2(x, y), egui::vec2(w, h)), "gamescreeninfo")
+            } else {
+                (
+                    egui::Rect::from_min_size(egui::pos2(x * rate, y * rate), egui::vec2(w * rate, h * rate)),
+                    "gamescreeninfo+rate",
+                )
+            };
+
+            if Self::split_rect_sane(r, window) {
+                rect_px = r;
+                source = src;
+            }
+        }
+
+        let game_view = egui::Rect::from_min_size(
+            egui::pos2(rect_px.min.x / ppp, rect_px.min.y / ppp),
+            egui::vec2(rect_px.width() / ppp, rect_px.height() / ppp),
+        );
+        (game_view, true, source)
+    }
+
+    #[cfg(target_os = "windows")]
+    fn split_rect_constants(window: egui::Vec2) -> egui::Rect {
+        let x = window.x * RACE_STAT_HUD_SPLIT_LEFT_RATIO;
+        let w = window.x * RACE_STAT_HUD_SPLIT_CENTER_RATIO;
+        egui::Rect::from_min_size(egui::pos2(x, 0.0), egui::vec2(w, window.y))
+    }
+
+    #[cfg(target_os = "windows")]
+    fn split_rect_sane(rect: egui::Rect, window: egui::Vec2) -> bool {
+        rect.width() > 0.0
+            && rect.height() > 0.0
+            && rect.min.x >= -1.0
+            && rect.min.y >= -1.0
+            && rect.max.x <= window.x * 1.02
+            && rect.max.y <= window.y * 1.02
+            && rect.width() * rect.height() >= window.x * window.y * 0.15
+    }
+
+    fn log_game_view(split: bool, rect: egui::Rect, source: &'static str, panel: egui::Vec2, scale: f32) {
+        static LAST: Lazy<Mutex<Option<(bool, [i64; 4], &'static str, [i64; 2], i64)>>> =
+            Lazy::new(|| Mutex::new(None));
+
+        let key = (
+            split,
+            [
+                rect.min.x.round() as i64,
+                rect.min.y.round() as i64,
+                rect.width().round() as i64,
+                rect.height().round() as i64,
+            ],
+            source,
+            [panel.x.round() as i64, panel.y.round() as i64],
+            (scale * 100.0).round() as i64,
+        );
+        let mut last = LAST.lock().unwrap();
+        if *last != Some(key) {
+            *last = Some(key);
+            info!(
+                "race stat hud game view: {}x{} at ({}, {}) [{}] (split: {}, panel {}x{}, scale {:.2})",
+                key.1[2], key.1[3], key.1[0], key.1[1], source, split, key.3[0], key.3[1], scale
+            );
+        }
+    }
+
+    fn panel_base_min(game_view: egui::Rect, panel: egui::Vec2, vertical: bool) -> egui::Pos2 {
+        if vertical {
+            egui::pos2(game_view.left(), game_view.bottom() - panel.y)
+        } else {
+            egui::pos2(game_view.right() - panel.x, game_view.bottom() - panel.y)
+        }
+    }
+
+    // panel top-left clamped so the panel stays inside the game view
+    fn clamp_panel_min(game_view: egui::Rect, panel: egui::Vec2, min: egui::Pos2) -> egui::Pos2 {
+        let max_x = (game_view.right() - panel.x).max(game_view.left());
+        let max_y = (game_view.bottom() - panel.y).max(game_view.top());
+        egui::pos2(min.x.clamp(game_view.left(), max_x), min.y.clamp(game_view.top(), max_y))
+    }
+
+    // a drag offset clamped back inside the game view
+    fn clamped_drag_offset(game_view: egui::Rect, panel: egui::Vec2, vertical: bool, offset: egui::Vec2) -> egui::Vec2 {
+        let base = Self::panel_base_min(game_view, panel, vertical);
+        Self::clamp_panel_min(game_view, panel, base + offset) - base
+    }
+
+    // offset for a stored normalized position (0..1 within the game view)
+    fn drag_offset_from_pos(game_view: egui::Rect, panel: egui::Vec2, vertical: bool, pos: Option<(f32, f32)>) -> egui::Vec2 {
+        let Some((nx, ny)) = pos else {
+            return egui::Vec2::ZERO;
+        };
+        let base = Self::panel_base_min(game_view, panel, vertical);
+        let desired = egui::pos2(
+            game_view.left() + nx.clamp(0.0, 1.0) * game_view.width(),
+            game_view.top() + ny.clamp(0.0, 1.0) * game_view.height(),
+        );
+        Self::clamp_panel_min(game_view, panel, desired) - base
+    }
+
+    // normalized position for a drag offset (what gets stored in the config)
+    fn drag_pos_from_offset(game_view: egui::Rect, panel: egui::Vec2, vertical: bool, offset: egui::Vec2) -> (f32, f32) {
+        let base = Self::panel_base_min(game_view, panel, vertical);
+        let min = Self::clamp_panel_min(game_view, panel, base + offset);
+        if game_view.width() <= 0.0 || game_view.height() <= 0.0 {
+            return (0.0, 0.0);
+        }
+        (
+            (min.x - game_view.left()) / game_view.width(),
+            (min.y - game_view.top()) / game_view.height(),
+        )
+    }
+
+    fn run_hud(&mut self, ctx: &egui::Context, screen: egui::Rect, game_view: egui::Rect, panel: egui::Vec2, scale: f32, toggle_button: bool) {
+        if !self.visible {
+            return;
+        }
+
+        let (all_stats, course_info) = self.collect_stats();
+        if all_stats.is_empty() {
+            // put the (empty) reusable buffer back before bailing
+            self.stats_buf = all_stats;
+            return;
+        }
+
+        let is_vertical = game_view.width() <= game_view.height();
+
+        let anchor = if is_vertical { egui::Align2::LEFT_BOTTOM } else { egui::Align2::RIGHT_BOTTOM };
+        let offset = if is_vertical {
+            egui::vec2(game_view.left() - screen.left(), game_view.bottom() - screen.bottom())
+        } else {
+            egui::vec2(game_view.right() - screen.right(), game_view.bottom() - screen.bottom())
+        };
+
+        let config = Hachimi::instance().config.load();
+        let draggable = config.race_stat_hud_draggable;
+        let drag_save = config.race_stat_hud_draggable_save;
+        drop(config);
+
+        let mut drag_offset = if draggable {
+            Self::drag_offset_from_pos(game_view, panel, is_vertical, self.drag_pos)
+        } else {
+            egui::Vec2::ZERO
+        };
+        let mut drag_active = false;
+        let mut drag_travel = self.drag_travel;
+
+        let area_id = egui::Id::new("race_stat_hud_overlay").with(is_vertical);
+        egui::Area::new(area_id)
+            .anchor(anchor, offset + drag_offset)
+            .show(ctx, |ui| {
+                // the whole panel is also a drag handle, registered BELOW the contents so widgets and the scroll area keep their own
+                // input: drags that start on non-interactive panel space (header, margins, empty rows) move the HUD
+                let drag_response = if draggable {
+                    let handle = egui::Rect::from_min_size(
+                        Self::panel_base_min(game_view, panel, is_vertical) + drag_offset,
+                        panel,
+                    );
+                    Some(ui.interact(handle, area_id.with("drag"), egui::Sense::drag()))
+                } else {
+                    None
+                };
+
+                egui::Frame::NONE
+                    .fill(egui::Color32::from_black_alpha(200))
+                    .stroke(egui::Stroke::new(1.0_f32, egui::Color32::from_rgb(100, 100, 100)))
+                    .inner_margin(egui::Margin::same((8.0 * scale).min(120.0) as i8))
+                    .show(ui, |ui| {
+                        // let the fixed egui interaction minimums shrink with the HUD scale so small
+                        // layouts keep their ratios
+                        let style = ui.style_mut();
+                        style.spacing.interact_size.y = style.spacing.interact_size.y.min(20.0 * scale);
+                        // egui labels are drag-selectable by default, which
+                        // lets row text steal drags from the scroll area
+                        style.interaction.selectable_labels = false;
+                        // commit to the panel size so rows wrap inside it and short pages pad to it, 
+                        // so the size stays identical across tabs and content
+                        let inner = panel - egui::vec2(16.0 * scale, 16.0 * scale);
+                        ui.set_min_width(inner.x);
+                        ui.set_max_width(inner.x);
+                        ui.set_min_height(inner.y);
+
+                        self.hud_contents(ui, &all_stats, course_info.as_ref(), scale, inner.y, toggle_button, draggable);
+                    });
+
+                // process the whole-panel drag handle registered above
+                if let Some(resp) = drag_response {
+                    if resp.dragged() {
+                        drag_active = true;
+                        if resp.drag_started() {
+                            drag_travel = 0.0;
+                        }
+                        drag_travel += resp.drag_delta().length();
+                        drag_offset += resp.drag_delta();
+                        drag_offset = Self::clamped_drag_offset(game_view, panel, is_vertical, drag_offset);
+                    }
+
+                    if resp.drag_stopped() {
+                        drag_active = true;
+                        // a click (press + release without movement) is not a drag:
+                        // egui marks drag-only widgets as dragged from the press on, so gate the save on real travel
+                        if drag_save && drag_travel >= RACE_STAT_HUD_DRAG_SAVE_THRESHOLD * scale {
+                            let pos = Self::drag_pos_from_offset(game_view, panel, is_vertical, drag_offset);
+                            let mut new_config = (**Hachimi::instance().config.load()).clone();
+                            new_config.race_stat_hud_drag_x = pos.0;
+                            new_config.race_stat_hud_drag_y = pos.1;
+                            save_and_reload_config(new_config);
+                        }
+                        drag_travel = 0.0;
+                    }
+                }
+            });
+
+        self.drag_travel = drag_travel;
+        if draggable && drag_active {
+            self.drag_pos = Some(Self::drag_pos_from_offset(game_view, panel, is_vertical, drag_offset));
+        }
+
+        self.stats_buf = all_stats;
+    }
+
+    fn run_button(&mut self, ctx: &egui::Context, game_view: egui::Rect, scale: f32) {
+        let btn_size = 20.0 * scale;
+        let margin = 4.0 * scale;
+        let is_vertical = game_view.width() <= game_view.height();
+        let x = if is_vertical {
+            game_view.right() - btn_size - margin
+        } else {
+            // margin for Android navigation bars
+            game_view.right() - btn_size - 48.0 * scale
+        };
+        let btn_pos = egui::Pos2::new(x, game_view.center().y - btn_size / 2.0);
+
+        let icon = "\u{f0d9}";
+        egui::Area::new(egui::Id::new("race_stat_hud_toggle_btn"))
+            .fixed_pos(btn_pos)
+            .show(ctx, |ui| {
+                let btn = egui::Button::new(
+                    egui::RichText::new(icon).size(14.0 * scale)
+                ).min_size(egui::Vec2::new(btn_size, btn_size));
+
+                if ui.add(btn).clicked() {
+                    self.set_visible(true);
+                }
+            });
+    }
+
+    fn hud_contents(&mut self, ui: &mut egui::Ui, all_stats: &[CharacterStats], course: Option<&RaceCourseInfo>, scale: f32, panel_h: f32, toggle_button: bool, draggable_page: bool) {
+        let mut selected = self.selected_character;
+        let mut visible = self.visible;
+        let current_tab = self.current_tab;
+
+        // character select
+        ui.horizontal(|ui| {
+            ui.with_layout(egui::Layout::left_to_right(egui::Align::Min), |ui| {
+                if toggle_button {
+                    let btn_size = 20.0 * scale;
+                    let btn = egui::Button::new(
+                        egui::RichText::new("\u{f0da}").size(14.0 * scale)
+                    ).min_size(egui::Vec2::new(btn_size, btn_size));
+
+                    if ui.add(btn).clicked() {
+                        visible = false;
+                    }
+                }
+
+                // cap the combo to half the row so long uma names ellipsize
+                // instead of growing the header past the fixed panel width
+                let combo_cap = (ui.available_width() * 0.5).max(60.0 * scale);
+                let combo_text = Self::ellipsized(ui, &all_stats[selected].name, combo_cap, 13.0 * scale);
+                egui::ComboBox::new(ui.id().with("character_select"), "")
+                    .selected_text(combo_text)
+                    .show_ui(ui, |combo_ui| {
+                        for (i, stats) in all_stats.iter().enumerate() {
+                            combo_ui.selectable_value(&mut selected, i, &stats.name);
+                        }
+                    });
+
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
+                    if ui.button(" \u{f29c} ").clicked() {
+                        thread::spawn(|| {
+                            Gui::instance().unwrap()
+                            .lock().unwrap()
+                            .show_window(Box::new(SimpleYesNoDialog::new(&t!("confirm_dialog_title"), &t!("race_stat_hud.open_race_mechanics_confirm"), |ok| {
+                                if !ok { return; }
+                                Thread::main_thread().schedule(|| {
+                                    Application::OpenURL(RACE_MECHANICS_URL.to_il2cpp_string());
+                                });
+                            })));
+                        });
+                    }
+
+                    if current_tab != RaceStatHudTab::Stats {
+                        let mut autoscroll = match current_tab {
+                            RaceStatHudTab::UsedSkills => self.config.race_stat_had_autoscroll_0,
+                            RaceStatHudTab::UnusedSkills => self.config.race_stat_had_autoscroll_1,
+                            _ => false
+                        };
+                        if ui.checkbox(&mut autoscroll, t!("race_stat_hud.autoscroll")).changed() {
+                            match current_tab {
+                                RaceStatHudTab::UsedSkills => self.config.race_stat_had_autoscroll_0 = autoscroll,
+                                RaceStatHudTab::UnusedSkills => self.config.race_stat_had_autoscroll_1 = autoscroll,
+                                _ => {}
+                            }
+                            self.save_autoscroll_config();
+                        }
+                    }
+                });
+            });
+        });
+        self.selected_character = selected;
+        self.set_visible(visible);
+
+        ui.add_space(4.0 * scale);
+
+        let mut current_tab = self.current_tab;
+        ui.horizontal_wrapped(|ui| {
+            let style = ui.style_mut();
+            style.spacing.button_padding = egui::vec2(8.0 * scale, 5.0 * scale);
+            style.spacing.item_spacing = egui::vec2(0.0, 4.0 * scale);
+            let widgets = &mut style.visuals.widgets;
+            widgets.inactive.corner_radius = egui::CornerRadius::ZERO;
+            widgets.hovered.corner_radius = egui::CornerRadius::ZERO;
+            widgets.active.corner_radius = egui::CornerRadius::ZERO;
+
+            for (tab, label) in RaceStatHudTab::display_list() {
+                if ui.selectable_label(current_tab == tab, egui::RichText::new(label).size(13.0 * scale)).clicked() {
+                    current_tab = tab;
+                }
+            }
+        });
+        self.current_tab = current_tab;
+
+        ui.add_space(4.0 * scale);
+
+        let used_h = ui.next_widget_position().y - ui.min_rect().min.y;
+        let page_h = (panel_h - used_h).max(24.0 * scale);
+
+        let tab = self.current_tab;
+        let page_id = match tab {
+            RaceStatHudTab::Stats => "race_stat_hud_page_stats",
+            RaceStatHudTab::UsedSkills => "race_stat_hud_page_used",
+            RaceStatHudTab::UnusedSkills => "race_stat_hud_page_unused"
+        };
+        let stats = &all_stats[selected];
+
+        let unused_ids = if tab == RaceStatHudTab::UnusedSkills {
+            let mut unused = std::mem::take(&mut self.unused_skills_buf);
+            unused.clear();
+            for id in &stats.all_skill_ids {
+                if !stats.used_skill_ids.contains(id) {
+                    unused.push(*id);
+                }
+            }
+            unused
+        } else {
+            Vec::new()
+        };
+
+        let used_changed = tab == RaceStatHudTab::UsedSkills && self.last_used_skills != stats.used_skill_ids;
+        let unused_changed = tab == RaceStatHudTab::UnusedSkills && self.last_unused_skills != unused_ids;
+
+        let mut scroll_to_bottom = false;
+        if used_changed {
+            scroll_to_bottom = self.config.race_stat_had_autoscroll_0;
+        } else if unused_changed {
+            scroll_to_bottom = self.config.race_stat_had_autoscroll_1;
+        }
+
+        egui::ScrollArea::vertical()
+            .id_salt(page_id)
+            .auto_shrink([false, false])
+            .max_height(page_h)
+            .min_scrolled_height(24.0 * scale)
+            .scroll_source(egui::containers::scroll_area::ScrollSource {
+                drag: if cfg!(target_os = "android") { true } else { !draggable_page },
+                ..Default::default()
+            })
+            .show(ui, |ui| {
+                ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
+                match tab {
+                    RaceStatHudTab::Stats => self.stats_page(ui, stats, course, scale),
+                    RaceStatHudTab::UsedSkills => self.skills_page(ui, &stats.used_skill_ids, scale),
+                    RaceStatHudTab::UnusedSkills => {
+                        self.skills_page(ui, &unused_ids, scale);
+                    }
+                };
+
+                if scroll_to_bottom {
+                    ui.scroll_to_cursor_animation(
+                        Some(egui::Align::BOTTOM),
+                        egui::style::ScrollAnimation::none()
+                    );
+                }
+            });
+
+        if tab == RaceStatHudTab::UsedSkills {
+            if used_changed {
+                self.last_used_skills.clear();
+                self.last_used_skills.extend_from_slice(&stats.used_skill_ids);
+            }
+        } else if tab == RaceStatHudTab::UnusedSkills {
+            if unused_changed {
+                self.last_unused_skills.clear();
+                self.last_unused_skills.extend_from_slice(&unused_ids);
+            }
+            self.unused_skills_buf = unused_ids;
+        }
+    }
+
+    fn stats_page(&mut self, ui: &mut egui::Ui, stats: &CharacterStats, course: Option<&RaceCourseInfo>, scale: f32) {
+        ui.horizontal_wrapped(|ui| {
+            ui.label(egui::RichText::new(t!("race_stat_hud.speed")).size(13.0 * scale));
+            self.chip_text.clear();
+            let _ = write!(self.chip_text, "{:.1}", stats.speed);
+            Self::value_chip(ui, &self.chip_text, VALUE_CHIP_HUE_SPEED, scale);
+            self.chip_text.clear();
+            let _ = write!(self.chip_text, "{} {:.1}", t!("race_stat_hud.min_speed"), stats.min_speed);
+            ui.label(egui::RichText::new(self.chip_text.as_str()).size(11.0 * scale).color(egui::Color32::from_gray(150)));
+
+            // speed bar: 0..max scale, fill up to the current speed, min
+            // speed marked with a tick on top of the fill
+            let bar_w = 100.0 * scale;
+            let bar_h = 10.0 * scale;
+            let (bar_rect, _) = ui.allocate_exact_size(egui::vec2(bar_w, bar_h), egui::Sense::hover());
+            let bar_max = if stats.max_speed_in_race > stats.min_speed {
+                stats.max_speed_in_race
+            } else {
+                SPEED_BAR_MAX_FALLBACK
+            };
+            let speed_ratio = (stats.speed / bar_max).clamp(0.0, 1.0);
+            let min_ratio = (stats.min_speed / bar_max).clamp(0.0, 1.0);
+
+            ui.painter().rect_filled(bar_rect, 0.0, egui::Color32::from_gray(60));
+            ui.painter().rect_filled(
+                egui::Rect::from_min_max(
+                    bar_rect.min,
+                    egui::pos2(bar_rect.min.x + bar_rect.width() * speed_ratio, bar_rect.max.y),
+                ),
+                0.0,
+                egui::Color32::from_gray(170)
+            );
+            // min speed floor tick
+            let tick_w = 1.0 * scale;
+            let min_x = bar_rect.min.x + bar_rect.width() * min_ratio;
+            ui.painter().rect_filled(
+                egui::Rect::from_min_max(egui::pos2(min_x - tick_w / 2.0, bar_rect.min.y), egui::pos2(min_x + tick_w / 2.0, bar_rect.max.y)),
+                0.0,
+                egui::Color32::from_gray(220)
+            );
+            // zenkai spurt glint while the uma is still running
+            if Self::glint_active(stats) {
+                Self::zenkai_glint(ui, bar_rect, scale);
+            }
+        });
+
+        // acceleration
+        ui.horizontal_wrapped(|ui| {
+            ui.label(egui::RichText::new(t!("race_stat_hud.accel")).size(13.0 * scale));
+
+            let gauge_w = 100.0 * scale;
+            let gauge_h = 10.0 * scale;
+            let (rect, _) = ui.allocate_exact_size(egui::vec2(gauge_w, gauge_h), egui::Sense::hover());
+            let center_x = rect.center().x;
+
+            let ratio = (stats.accel.unwrap_or(0.0) / ACCEL_GAUGE_MAX).clamp(-1.0, 1.0);
+            let half = gauge_w / 2.0 * ratio.abs();
+            let tick_w = 1.0 * scale;
+
+            ui.painter().rect_filled(rect, 0.0, egui::Color32::from_gray(60));
+            // center tick marking zero accel
+            ui.painter().rect_filled(
+                egui::Rect::from_min_max(egui::pos2(center_x - tick_w / 2.0, rect.min.y), egui::pos2(center_x + tick_w / 2.0, rect.max.y)),
+                0.0,
+                egui::Color32::from_gray(90)
+            );
+            if half > 0.0 {
+                let color = if ratio > 0.0 { DELTA_UP_COLOR } else { DELTA_DOWN_COLOR };
+                let fill_rect = if ratio > 0.0 {
+                    egui::Rect::from_min_max(egui::pos2(center_x, rect.min.y), egui::pos2(center_x + half, rect.max.y))
+                } else {
+                    egui::Rect::from_min_max(egui::pos2(center_x - half, rect.min.y), egui::pos2(center_x, rect.max.y))
+                };
+                ui.painter().rect_filled(fill_rect, 0.0, color);
+            }
+
+            let color = match stats.accel {
+                Some(v) => {
+                    self.chip_text.clear();
+                    let _ = write!(self.chip_text, "{:+.1} m/s\u{00b2}", v);
+                    if v > 0.05 { DELTA_UP_COLOR } else if v < -0.05 { DELTA_DOWN_COLOR } else { egui::Color32::from_gray(140) }
+                }
+                None => {
+                    self.chip_text.clear();
+                    self.chip_text.push('-');
+                    egui::Color32::from_gray(140)
+                }
+            };
+            ui.label(egui::RichText::new(self.chip_text.as_str()).size(13.0 * scale).color(color));
+        });
+
+        // stamina (hp bar), with the drain rate
+        ui.horizontal_wrapped(|ui| {
+            ui.label(egui::RichText::new(t!("race_stat_hud.stamina")).size(13.0 * scale));
+            let hp_ratio = if stats.max_hp > 0.0 { stats.hp / stats.max_hp } else { 0.0 };
+            self.chip_text.clear();
+            let _ = write!(self.chip_text, "{:.0}/{:.0}", stats.hp, stats.max_hp);
+            Self::value_chip(ui, &self.chip_text, Self::hp_chip_hue(hp_ratio), scale);
+            let bar_width = 100.0 * scale;
+            let bar_height = 10.0 * scale;
+            let (rect, _) = ui.allocate_exact_size(
+                egui::vec2(bar_width, bar_height),
+                egui::Sense::hover(),
+            );
+            let bar_color = if hp_ratio > 0.5 {
+                egui::Color32::GREEN
+            } else if hp_ratio > 0.25 {
+                egui::Color32::YELLOW
+            } else {
+                egui::Color32::RED
+            };
+            ui.painter().rect_filled(rect, 0.0, egui::Color32::from_gray(60));
+            let filled_rect = egui::Rect::from_min_max(
+                rect.min,
+                egui::pos2(rect.min.x + rect.width() * hp_ratio, rect.max.y),
+            );
+            ui.painter().rect_filled(filled_rect, 0.0, bar_color);
+            if Self::glint_active(stats) {
+                Self::zenkai_glint(ui, rect, scale);
+            }
+
+            let color = match stats.hp_drain {
+                // hp drain
+                Some(v) => {
+                    self.chip_text.clear();
+                    let _ = write!(self.chip_text, "{:+.1}/s", -v);
+                    if v > 0.05 { DELTA_DOWN_COLOR } else if v < -0.05 { DELTA_UP_COLOR } else { egui::Color32::from_gray(140) }
+                }
+                None => {
+                    self.chip_text.clear();
+                    self.chip_text.push('-');
+                    egui::Color32::from_gray(140)
+                }
+            };
+            ui.label(egui::RichText::new(self.chip_text.as_str()).size(11.0 * scale).color(color));
+        });
+
+        // phase
+        ui.horizontal_wrapped(|ui| {
+            ui.label(egui::RichText::new(t!("race_stat_hud.phase")).size(13.0 * scale));
+            Self::value_chip(ui, &Self::phase_name(stats.phase), VALUE_CHIP_HUE_PHASE, scale);
+        });
+
+        // order
+        ui.horizontal_wrapped(|ui| {
+            ui.label(egui::RichText::new(t!("race_stat_hud.order")).size(13.0 * scale));
+            if stats.cur_order >= 0 {
+                Self::ordinal_into(stats.cur_order + 1, &mut self.chip_text);
+            } else {
+                self.chip_text.clear();
+                self.chip_text.push('-');
+            }
+            Self::value_chip(ui, &self.chip_text, VALUE_CHIP_HUE_ORDER, scale);
+        });
+
+        // distance
+        ui.horizontal_wrapped(|ui| {
+            ui.label(egui::RichText::new(t!("race_stat_hud.distance")).size(13.0 * scale));
+            self.chip_text.clear();
+            match course {
+                Some(c) => { let _ = write!(self.chip_text, "{:.0} / {:.0} m", stats.distance.clamp(0.0, c.course_distance), c.course_distance); }
+                None => { let _ = write!(self.chip_text, "{:.0} m", stats.distance); }
+            }
+            Self::value_chip(ui, &self.chip_text, VALUE_CHIP_HUE_DISTANCE, scale);
+        });
+        if let Some(course) = course {
+            Self::distance_bar(ui, stats, course, scale);
+        }
+
+        // lane (11.25m per course width, same as the world transform)
+        ui.horizontal_wrapped(|ui| {
+            ui.label(egui::RichText::new(t!("race_stat_hud.lane")).size(13.0 * scale));
+            self.chip_text.clear();
+            let _ = write!(self.chip_text, "{} ({:.1} m)", Self::lane_name(stats.lane), stats.lane_distance * 11.25);
+            Self::value_chip(ui, &self.chip_text, VALUE_CHIP_HUE_LANE, scale);
+        });
+
+        // start delay
+        ui.horizontal_wrapped(|ui| {
+            ui.label(egui::RichText::new(t!("race_stat_hud.start_delay")).size(13.0 * scale));
+            self.chip_text.clear();
+            let _ = write!(self.chip_text, "{:+.2} s", stats.delay_time);
+            Self::value_chip(ui, &self.chip_text, VALUE_CHIP_HUE_START_DELAY, scale);
+        });
+
+        // live state chips
+        self.state_chips(ui, stats, scale);
+
+        if stats.phase == HorsePhase::Finished {
+            ui.horizontal_wrapped(|ui| {
+                ui.label(egui::RichText::new(t!("race_stat_hud.finish")).size(13.0 * scale));
+                self.chip_text.clear();
+                Self::ordinal_into(stats.finish_order + 1, &mut self.chip_text);
+                if stats.finish_time_diff > 0.0 {
+                    let _ = write!(self.chip_text, " - {:.2} s (+{:.2})", stats.finish_time_scaled, stats.finish_time_diff);
+                } else {
+                    let _ = write!(self.chip_text, " - {:.2} s", stats.finish_time_scaled);
+                }
+                Self::value_chip(ui, &self.chip_text, VALUE_CHIP_HUE_FINISH, scale);
+            });
+        }
+    }
+
+    fn distance_bar(ui: &mut egui::Ui, stats: &CharacterStats, course: &RaceCourseInfo, scale: f32) {
+        let bar_height = 8.0 * scale;
+        let (rect, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), bar_height), egui::Sense::hover());
+        ui.painter().rect_filled(rect, 0.0, egui::Color32::from_gray(60));
+        let total = course.course_distance;
+        if total <= 0.0 {
+            return;
+        }
+
+        let progress = (stats.distance / total).clamp(0.0, 1.0);
+        let filled_rect = egui::Rect::from_min_max(
+            rect.min,
+            egui::pos2(rect.min.x + rect.width() * progress, rect.max.y),
+        );
+        ui.painter().rect_filled(filled_rect, 0.0, egui::Color32::from_gray(170));
+
+        // ticks at the phase boundaries (early | mid | late | final)
+        let tick_width = 1.0 * scale;
+        for tick in [course.phase_middle, course.phase_end, course.phase_last] {
+            let x = rect.min.x + rect.width() * (tick / total).clamp(0.0, 1.0);
+            ui.painter().rect_filled(
+                egui::Rect::from_min_max(egui::pos2(x - tick_width / 2.0, rect.min.y), egui::pos2(x + tick_width / 2.0, rect.max.y)),
+                0.0,
+                egui::Color32::from_gray(220)
+            );
+        }
+
+        // last spurt start
+        if stats.is_last_spurt && stats.last_spurt_start_distance >= 0.0 {
+            let x = rect.min.x + rect.width() * (stats.last_spurt_start_distance / total).clamp(0.0, 1.0);
+            ui.painter().rect_filled(
+                egui::Rect::from_min_max(egui::pos2(x - tick_width, rect.min.y), egui::pos2(x + tick_width, rect.max.y)),
+                0.0,
+                egui::Color32::GREEN
+            );
+        }
+    }
+
+    fn state_chips(&mut self, ui: &mut egui::Ui, stats: &CharacterStats, scale: f32) {
+        if stats.phase == HorsePhase::Finished {
+            return;
+        }
+
+        let se = &stats.sim_events;
+        if !stats.is_good_start && !stats.is_start_dash && !stats.is_last_spurt
+            && !stats.is_bad_start && !stats.is_clog && stats.temptation_mode == 0
+            && !stats.is_compete_fight && !stats.is_compete_top
+            && !se.release_conserve_power && !se.stamina_limit_break
+            && !se.stamina_keep && !se.run_at_full_speed
+            && !se.compete_before_spurt && !se.secure_lead {
+            return;
+        }
+
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing = egui::vec2(4.0 * scale, 4.0 * scale);
+            if stats.is_good_start {
+                Self::state_chip(ui, &t!("race_stat_hud.good_start"), STATE_CHIP_HUE_GOOD, scale);
+            }
+            if stats.is_start_dash {
+                Self::state_chip(ui, &t!("race_stat_hud.start_dash"), STATE_CHIP_HUE_GOOD, scale);
+            }
+            if stats.is_last_spurt {
+                Self::state_chip(ui, &t!("race_stat_hud.last_spurt"), STATE_CHIP_HUE_GOOD, scale);
+            }
+            if stats.is_bad_start {
+                Self::state_chip(ui, &t!("race_stat_hud.bad_start"), STATE_CHIP_HUE_BAD, scale);
+            }
+            if stats.is_clog {
+                Self::state_chip(ui, &t!("race_stat_hud.clog"), STATE_CHIP_HUE_BAD, scale);
+            }
+            if stats.temptation_mode != 0 {
+                self.chip_text.clear();
+                let _ = write!(self.chip_text, "{} ({}, x{})", t!("race_stat_hud.rushed"), Self::temptation_mode_name(stats.temptation_mode), stats.temptation_count);
+                Self::state_chip(ui, &self.chip_text, STATE_CHIP_HUE_BAD, scale);
+            }
+            if stats.is_compete_fight {
+                self.chip_text.clear();
+                let _ = write!(self.chip_text, "{} ({})", t!("race_stat_hud.compete_fight"), stats.compete_fight_count);
+                Self::state_chip(ui, &self.chip_text, STATE_CHIP_HUE_CONTEST, scale);
+            }
+            if stats.is_compete_top {
+                self.chip_text.clear();
+                let _ = write!(self.chip_text, "{} ({}, {:.1}s)", t!("race_stat_hud.compete_top"), stats.compete_top_count, stats.compete_top_remain_time);
+                Self::state_chip(ui, &self.chip_text, STATE_CHIP_HUE_CONTEST, scale);
+            }
+            if se.run_at_full_speed {
+                Self::state_chip(ui, &t!("race_stat_hud.run_at_full_speed"), STATE_CHIP_HUE_ZENKAI, scale);
+            }
+            if se.release_conserve_power {
+                Self::state_chip(ui, &t!("race_stat_hud.conserve_release"), STATE_CHIP_HUE_GOOD, scale);
+            }
+            if se.stamina_limit_break {
+                Self::state_chip(ui, &t!("race_stat_hud.stamina_limit_break"), STATE_CHIP_HUE_GOOD, scale);
+            }
+            if se.stamina_keep {
+                Self::state_chip(ui, &t!("race_stat_hud.stamina_keep"), STATE_CHIP_HUE_INFO, scale);
+            }
+            if se.compete_before_spurt {
+                self.chip_text.clear();
+                let _ = write!(self.chip_text, "{} ({})", t!("race_stat_hud.compete_before_spurt"), se.compete_before_spurt_count);
+                Self::state_chip(ui, &self.chip_text, STATE_CHIP_HUE_CONTEST, scale);
+            }
+            if se.secure_lead {
+                self.chip_text.clear();
+                let _ = write!(self.chip_text, "{} ({})", t!("race_stat_hud.secure_lead"), se.secure_lead_count);
+                Self::state_chip(ui, &self.chip_text, STATE_CHIP_HUE_CONTEST, scale);
+            }
+        });
+    }
+
+    fn state_chip(ui: &mut egui::Ui, text: &str, hue: f32, scale: f32) {
+        let (bg, border, text_color) = Self::chip_colors(ui, hue);
+        Gui::run_chip(ui, text, bg, border, text_color, scale);
+    }
+
+    fn value_chip(ui: &mut egui::Ui, text: &str, hue: f32, scale: f32) {
+        let (bg, border, text_color) = Self::chip_colors(ui, hue);
+        Gui::run_chip(ui, text, bg, border, text_color, scale);
+    }
+
+    fn hp_chip_hue(hp_ratio: f32) -> f32 {
+        if hp_ratio > 0.5 {
+            0.33
+        } else if hp_ratio > 0.25 {
+            0.16
+        } else {
+            0.02
+        }
+    }
+
+    fn ellipsized<'a>(ui: &egui::Ui, text: &'a str, cap: f32, font_size: f32) -> Cow<'a, str> {
+        let font = egui::FontId::proportional(font_size);
+        let width = |s: &str| {
+            ui.painter()
+                .layout_no_wrap(s.to_owned(), font.clone(), egui::Color32::PLACEHOLDER)
+                .size()
+                .x
+        };
+
+        if width(text) <= cap || text.is_empty() {
+            return Cow::Borrowed(text);
+        }
+
+        let est = ((text.chars().count() as f32) * (cap / width(text))).floor() as usize;
+        let mut truncated: String = text.chars().take(est.saturating_sub(1)).collect();
+        truncated.push('\u{2026}');
+        while truncated.chars().count() > 1 && width(&truncated) > cap {
+            truncated = truncated.chars().take(truncated.chars().count().saturating_sub(2)).collect();
+            truncated.push('\u{2026}');
+        }
+
+        Cow::Owned(truncated)
+    }
+
+    fn glint_active(stats: &CharacterStats) -> bool {
+        stats.sim_events.run_at_full_speed && stats.phase != HorsePhase::Finished
+    }
+
+    // zenkai spurt effect on the speed/hp visualizers
+    fn zenkai_glint(ui: &mut egui::Ui, rect: egui::Rect, scale: f32) {
+        let time = ui.input(|i| i.time) as f32;
+        let phase = time.rem_euclid(ZENKAI_GLINT_PERIOD) / ZENKAI_GLINT_PERIOD;
+        let band_w = (rect.width() * 0.3).max(6.0 * scale);
+        let slope = rect.height() * 1.6;
+        let travel = rect.width() + band_w + slope * 2.0;
+        let lead = rect.min.x - band_w - slope + phase * travel;
+
+        let painter = ui.painter_at(rect);
+        let halo = egui::Color32::from(egui::ecolor::Hsva::new(STATE_CHIP_HUE_ZENKAI, 0.70, 0.60, 0.45));
+        let core = egui::Color32::from(egui::ecolor::Hsva::new(STATE_CHIP_HUE_ZENKAI, 0.30, 1.00, 0.85));
+
+        let band = |x: f32, w: f32| vec![
+            egui::pos2(x, rect.max.y),
+            egui::pos2(x + w, rect.max.y),
+            egui::pos2(x + w + slope, rect.min.y),
+            egui::pos2(x + slope, rect.min.y)
+        ];
+
+        painter.add(egui::Shape::convex_polygon(
+            band(lead - band_w * 0.6, band_w * 1.6),
+            halo,
+            egui::Stroke::NONE
+        ));
+        painter.add(egui::Shape::convex_polygon(
+            band(lead, band_w),
+            core,
+            egui::Stroke::NONE
+        ));
+    }
+
+    fn phase_name(phase: HorsePhase) -> Cow<'static, str> {
+        match phase {
+            HorsePhase::RunUp => t!("race_stat_hud.phase_runup"),
+            HorsePhase::Start => t!("race_stat_hud.phase_start"),
+            HorsePhase::MiddleRun => t!("race_stat_hud.phase_middle"),
+            HorsePhase::End => t!("race_stat_hud.phase_end"),
+            HorsePhase::Last => t!("race_stat_hud.phase_last"),
+            HorsePhase::Finished => t!("race_stat_hud.phase_finished"),
+        }
+    }
+
+    fn lane_name(lane: LaneType) -> Cow<'static, str> {
+        match lane {
+            LaneType::Uti => t!("race_stat_hud.lane_inner"),
+            LaneType::Naka => t!("race_stat_hud.lane_middle"),
+            LaneType::Soto => t!("race_stat_hud.lane_outer"),
+            LaneType::Oosoto => t!("race_stat_hud.lane_outermost"),
+        }
+    }
+
+    fn temptation_mode_name(mode: TemptationMode) -> Cow<'static, str> {
+        match mode {
+            TemptationMode::PositionSashi => t!("race_stat_hud.temptation_sashi"),
+            TemptationMode::PositionSenko => t!("race_stat_hud.temptation_senko"),
+            TemptationMode::PositionNige => t!("race_stat_hud.temptation_nige"),
+            TemptationMode::Boost => t!("race_stat_hud.temptation_boost"),
+            _ => Cow::Borrowed("")
+        }
+    }
+
+    fn ordinal_into(n: i32, out: &mut String) {
+        let suffix = if n / 10 % 10 == 1 {
+            "th"
+        } else {
+            match n % 10 {
+                1 => "st",
+                2 => "nd",
+                3 => "rd",
+                _ => "th"
+            }
+        };
+        out.clear();
+        let _ = write!(out, "{}{}", n, suffix);
+    }
+
+    fn skills_page(&mut self, ui: &mut egui::Ui, skill_ids: &[i32], scale: f32) {
+        if skill_ids.is_empty() {
+            ui.label(egui::RichText::new("-").size(12.0 * scale));
+            return;
+        }
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing = egui::vec2(4.0 * scale, 4.0 * scale);
+            for (i, &skill_id) in skill_ids.iter().enumerate() {
+                let (bg, border, text_color) = Self::skill_chip_colors(ui, i);
+                Gui::run_chip(ui, &self.skill_name(skill_id), bg, border, text_color, scale);
+            }
+        });
+    }
+
+    fn skill_chip_colors(ui: &egui::Ui, index: usize) -> (egui::Color32, egui::Color32, egui::Color32) {
+        Self::chip_colors(ui, SKILL_CHIP_HUES[index % SKILL_CHIP_HUES.len()])
+    }
+
+    fn chip_colors(ui: &egui::Ui, hue: f32) -> (egui::Color32, egui::Color32, egui::Color32) {
+        let (bg, border, text) = if ui.visuals().dark_mode {
+            (
+                egui::ecolor::Hsva::new(hue, 0.40, 0.28, 1.0),
+                egui::ecolor::Hsva::new(hue, 0.55, 0.65, 1.0),
+                egui::ecolor::Hsva::new(hue, 0.04, 0.79, 1.0)
+            )
+        } else {
+            (
+                egui::ecolor::Hsva::new(hue, 0.50, 0.94, 1.0),
+                egui::ecolor::Hsva::new(hue, 0.65, 0.55, 1.0),
+                egui::ecolor::Hsva::new(hue, 0.25, 0.35, 1.0)
+            )
+        };
+        (
+            egui::Color32::from(bg),
+            egui::Color32::from(border),
+            egui::Color32::from(text)
+        )
+    }
+
+    fn skill_name(&mut self, skill_id: i32) -> &str {
+        use crate::il2cpp::{
+            ext::Il2CppStringExt,
+            hook::umamusume::MasterDataUtil,
+            sql::TextDataQuery
+        };
+
+        self.skill_name_cache
+            .entry(skill_id)
+            .or_insert_with(|| {
+                let to_s = |ptr: *mut Il2CppString| unsafe {
+                    ptr.as_ref().map(|s| s.as_utf16str().to_string())
+                };
+    
+                to_s(TextDataQuery::get_skill_name(skill_id).unwrap_or(0 as _))
+                    .or_else(|| to_s(MasterDataUtil::GetSkillName(skill_id)))
+                    .unwrap_or_else(|| format!("Skill {}", skill_id))
+            })
+    }
+
+    fn collect_stats(&mut self) -> (Vec<CharacterStats>, Option<RaceCourseInfo>) {
+        use crate::il2cpp::{
+            hook::umamusume::{RaceManager, RaceHorseManagerBase},
+            symbols::Array
+        };
+
+        let mut all_stats = std::mem::take(&mut self.stats_buf);
+
+        let race_manager = RaceManager::instance();
+        if race_manager.is_null() {
+            all_stats.clear();
+            return (all_stats, None);
+        }
+
+        let horse_manager = RaceManager::get__horseManager(race_manager);
+        if horse_manager.is_null() {
+            all_stats.clear();
+            return (all_stats, None);
+        }
+
+        let horse_infos = RaceHorseManagerBase::GetHorseRaceInfos(horse_manager);
+        if horse_infos.is_null() {
+            all_stats.clear();
+            return (all_stats, None);
+        }
+
+        let arr: Array<*mut Il2CppObject> = Array::from(horse_infos);
+        let character_count = arr.len();
+        if character_count == 0 {
+            all_stats.clear();
+            return (all_stats, None);
+        }
+
+        Self::collect_sim_rates(horse_manager, character_count, &mut self.sim_rates_buf);
+        Self::collect_sim_events(horse_manager, character_count, &mut self.sim_events_buf);
+        let sim_rates = self.sim_rates_buf.as_slice();
+        let sim_events = self.sim_events_buf.as_slice();
+
+        let mut valid_count = 0usize;
+        for i in 0..character_count {
+            let race_info = unsafe { arr.as_slice()[i] };
+            if valid_count == all_stats.len() {
+                all_stats.push(CharacterStats::default());
+            }
+            if Self::fill_character_stats(
+                race_info,
+                sim_rates.get(i).copied().unwrap_or_default(),
+                sim_events.get(i).map(Vec::as_slice).unwrap_or(&[]),
+                &mut all_stats[valid_count]
+            ) {
+                valid_count += 1;
+            }
+        }
+        all_stats.truncate(valid_count);
+
+        if !all_stats.is_empty() {
+            let player_idx = RaceHorseManagerBase::GetPlayerHorseIndex(horse_manager);
+            let player_idx = if player_idx >= 0 && (player_idx as usize) < character_count {
+                player_idx as usize
+            } else {
+                0
+            };
+
+            if self.select_player_on_race_start {
+                self.select_player_on_race_start = false;
+                self.selected_character = player_idx.min(all_stats.len() - 1);
+            } else if self.selected_character >= all_stats.len() {
+                self.selected_character = player_idx.min(all_stats.len() - 1);
+            }
+        }
+
+        (all_stats, Self::collect_course_info())
+    }
+
+    fn collect_course_info() -> Option<RaceCourseInfo> {
+        use crate::il2cpp::hook::umamusume::{RaceInfo, RaceManager};
+
+        let race_info = RaceManager::get_RaceInfo();
+        if race_info.is_null() {
+            return None;
+        }
+
+        Some(RaceCourseInfo {
+            // the umas start at the gate, so the bar total includes the run up
+            course_distance: (RaceInfo::get_CourseOnlyDistance(race_info) + RaceInfo::get_RunUpDistance(race_info)) as f32,
+            phase_middle: RaceInfo::get_PhaseMiddleStartDistance(race_info),
+            phase_end: RaceInfo::get_PhaseEndStartDistance(race_info),
+            phase_last: RaceInfo::get_PhaseLastStartDistance(race_info)
+        })
+    }
+
+    fn collect_sim_rates(horse_manager: *mut Il2CppObject, horse_count: usize, rates: &mut Vec<SimRates>) {
+        use crate::il2cpp::{
+            hook::umamusume::{
+                RaceSimulateData,
+                RaceSimulateReader,
+                RaceHorseManagerReplay,
+                RaceSimulateFrameData,
+                RaceSimulateHorseFrameData
+            },
+            symbols::{Array, IList}
+        };
+
+        rates.clear();
+        rates.resize_with(horse_count, SimRates::default);
+
+        if !RaceHorseManagerReplay::is_replay_manager(horse_manager) {
+            return;
+        }
+
+        let reader = RaceHorseManagerReplay::get__reader(horse_manager);
+        if reader.is_null() {
+            return;
+        }
+
+        let sim_data = RaceSimulateReader::get__simData(reader);
+        if sim_data.is_null() {
+            return;
+        }
+
+        let frame_list = RaceSimulateData::get_FrameDataList(sim_data);
+        let Some(frames) = IList::<*mut Il2CppObject>::new(frame_list) else {
+            return;
+        };
+
+        let frame_count = frames.count();
+        if frame_count < 2 {
+            return;
+        }
+
+        // binary search for the newest frame whose time is <= the reader's
+        // current time (frames are stored in ascending time order)
+        let cur_time = RaceSimulateReader::get__curTime(reader);
+        let mut lo = 0;
+        let mut hi = frame_count - 1;
+        let mut idx = -1;
+        while lo <= hi {
+            let mid = lo + (hi - lo) / 2;
+            let Some(frame) = frames.get(mid) else { break };
+            if !frame.is_null() && RaceSimulateFrameData::get_Time(frame) <= cur_time {
+                idx = mid;
+                lo = mid + 1;
+            } else {
+                hi = mid - 1;
+            }
+        }
+        if idx < 1 {
+            // first frame or before the race start: no previous frame to
+            // compare against yet
+            return;
+        }
+
+        let Some(cur_frame) = frames.get(idx) else { return };
+        let Some(prev_frame) = frames.get(idx - 1) else { return };
+        if cur_frame.is_null() || prev_frame.is_null() {
+            return;
+        }
+        let dt = RaceSimulateFrameData::get_Time(cur_frame) - RaceSimulateFrameData::get_Time(prev_frame);
+        if dt <= 0.0 {
+            return;
+        }
+
+        let cur_arr_ptr = RaceSimulateFrameData::get_HorseDataArray(cur_frame);
+        let prev_arr_ptr = RaceSimulateFrameData::get_HorseDataArray(prev_frame);
+        if cur_arr_ptr.is_null() || prev_arr_ptr.is_null() {
+            return;
+        }
+        let cur_arr: Array<*mut Il2CppObject> = Array::from(cur_arr_ptr);
+        let prev_arr: Array<*mut Il2CppObject> = Array::from(prev_arr_ptr);
+        for i in 0..horse_count.min(cur_arr.len()).min(prev_arr.len()) {
+            let cur_horse = unsafe { cur_arr.as_slice()[i] };
+            let prev_horse = unsafe { prev_arr.as_slice()[i] };
+            if cur_horse.is_null() || prev_horse.is_null() {
+                continue;
+            }
+
+            rates[i] = SimRates {
+                accel: Some((RaceSimulateHorseFrameData::get_Speed(cur_horse) - RaceSimulateHorseFrameData::get_Speed(prev_horse)) / dt),
+                hp_drain: Some((RaceSimulateHorseFrameData::get_Hp(prev_horse) - RaceSimulateHorseFrameData::get_Hp(cur_horse)) / dt)
+            };
+        }
+    }
+
+    fn collect_sim_events(horse_manager: *mut Il2CppObject, horse_count: usize, events: &mut Vec<Vec<SimEvent>>) {
+        use crate::il2cpp::{
+            hook::umamusume::{
+                RaceSimulateData,
+                RaceSimulateEventData,
+                RaceSimulateReader,
+                RaceHorseManagerReplay
+            },
+            symbols::{Array, IList}
+        };
+
+        for ev in events.iter_mut() {
+            ev.clear();
+        }
+        if events.len() < horse_count {
+            events.resize_with(horse_count, Vec::new);
+        } else {
+            events.truncate(horse_count);
+        }
+
+        if !RaceHorseManagerReplay::is_replay_manager(horse_manager) {
+            return;
+        }
+
+        let reader = RaceHorseManagerReplay::get__reader(horse_manager);
+        if reader.is_null() {
+            return;
+        }
+
+        let sim_data = RaceSimulateReader::get__simData(reader);
+        if sim_data.is_null() {
+            return;
+        }
+
+        let ev_list = RaceSimulateData::get__simEvDataList(sim_data);
+        let Some(ev_list) = IList::<*mut Il2CppObject>::new(ev_list) else {
+            return;
+        };
+
+        for ev in ev_list.iter() {
+            if ev.is_null() {
+                continue;
+            }
+
+            let kind = RaceSimulateEventData::get_type(ev);
+
+            let param_ptr = RaceSimulateEventData::get_param(ev);
+            if param_ptr.is_null() {
+                continue;
+            }
+            let param: Array<i32> = Array::from(param_ptr);
+            let param_slice = unsafe { param.as_slice() };
+            if param_slice.is_empty() {
+                continue;
+            }
+            let horse_idx = param_slice[0];
+            if horse_idx < 0 || horse_idx as usize >= horse_count {
+                continue;
+            }
+
+            let distance_data = RaceSimulateEventData::get_distanceData(ev);
+            if distance_data.is_null() {
+                continue;
+            }
+
+            events[horse_idx as usize].push(SimEvent {
+                kind,
+                start_distance: RaceSimulateEventData::DistanceData::get_startDistance(distance_data),
+                finish_distance: RaceSimulateEventData::DistanceData::get_finishDistance(distance_data)
+            });
+        }
+    }
+
+    fn sim_event_active(event: &SimEvent, cur_distance: f32) -> bool {
+        if cur_distance < event.start_distance {
+            return false;
+        }
+        event.finish_distance <= 0.0 || cur_distance <= event.finish_distance
+    }
+
+    fn eval_sim_events(events: &[SimEvent], cur_distance: f32) -> SimEventStates {
+        let mut states = SimEventStates::default();
+        for event in events {
+            let active = Self::sim_event_active(event, cur_distance);
+            match event.kind {
+                SimulateEventType::ReleaseConservePower => states.release_conserve_power |= active,
+                SimulateEventType::StaminaLimitBreakBuff => states.stamina_limit_break |= active,
+                SimulateEventType::StaminaKeep => states.stamina_keep |= active,
+                SimulateEventType::RunAtFullSpeed => states.run_at_full_speed |= active,
+                SimulateEventType::CompeteBeforeSpurt => {
+                    // 2s bursts with a 1s cooldown: count every burst that
+                    // already fired, show the chip while one is running
+                    if event.start_distance <= cur_distance {
+                        states.compete_before_spurt_count += 1;
+                    }
+                    states.compete_before_spurt |= active;
+                }
+                SimulateEventType::SecureLead => {
+                    if event.start_distance <= cur_distance {
+                        states.secure_lead_count += 1;
+                    }
+                    states.secure_lead |= active;
+                }
+                _ => {}
+            }
+        }
+        states
+    }
+
+    fn fill_character_stats(race_info: *mut Il2CppObject, sim_rates: SimRates, sim_events: &[SimEvent], stats: &mut CharacterStats) -> bool {
+        use crate::il2cpp::{
+            ext::Il2CppStringExt,
+            hook::umamusume::{HorseData, HorseRaceInfo, HorseRaceInfoReplay, SkillBase, SkillManager},
+            symbols::{Array, IList}
+        };
+
+        if race_info.is_null() {
+            return false;
+        }
+
+        // name from HorseRaceInfo, fallback to HorseData
+        let name_ptr = HorseRaceInfo::get_CharaName(race_info);
+        if !name_ptr.is_null() {
+            let s = unsafe { (*name_ptr).as_utf16str() };
+            stats.name.clear();
+            stats.name.extend(s.chars());
+        } else {
+            let horse_data = HorseRaceInfo::get_HorseData(race_info);
+            let hd_name = if !horse_data.is_null() { HorseData::get_charaName(horse_data) } else { 0 as _ };
+            if !hd_name.is_null() {
+                let s = unsafe { (*hd_name).as_utf16str() };
+                stats.name.clear();
+                stats.name.extend(s.chars());
+            } else {
+                stats.name.clear();
+                stats.name.push('?');
+            }
+        }
+
+        stats.speed = HorseRaceInfo::get__lastSpeed(race_info);
+        stats.min_speed = HorseRaceInfo::get__minSpeed(race_info);
+        stats.max_speed_in_race = HorseRaceInfo::get__maxSpeedInRace(race_info);
+        stats.hp = HorseRaceInfo::get__hp(race_info);
+        stats.max_hp = HorseRaceInfo::get__maxHp(race_info);
+
+        stats.phase = HorseRaceInfo::get__phase(race_info);
+        stats.cur_order = HorseRaceInfo::get_CurOrder(race_info);
+        stats.distance = HorseRaceInfo::get__distance(race_info);
+
+        stats.sim_events = Self::eval_sim_events(sim_events, stats.distance);
+        stats.lane = HorseRaceInfo::get_Lane(race_info);
+        stats.lane_distance = HorseRaceInfo::get__laneDistance(race_info);
+        stats.delay_time = HorseRaceInfo::get_DelayTime(race_info);
+        stats.is_good_start = HorseRaceInfo::get_IsGoodStart(race_info);
+        stats.is_bad_start = HorseRaceInfo::get_IsBadStart(race_info);
+        stats.is_start_dash = HorseRaceInfo::get_IsStartDash(race_info);
+        stats.is_clog = HorseRaceInfo::get_IsClog(race_info);
+        stats.is_compete_fight = HorseRaceInfo::get_IsCompeteFight(race_info);
+        stats.compete_fight_count = HorseRaceInfo::get_CompeteFightCount(race_info);
+        stats.is_compete_top = HorseRaceInfo::get_IsCompeteTop(race_info);
+        stats.compete_top_count = HorseRaceInfo::get_CompeteTopCount(race_info);
+        stats.compete_top_remain_time = HorseRaceInfo::get_CompeteTopRemainTime(race_info);
+
+        stats.temptation_mode = HorseRaceInfoReplay::get__temptationMode(race_info);
+        stats.temptation_count = HorseRaceInfoReplay::get__temptationCount(race_info);
+        stats.is_last_spurt = HorseRaceInfoReplay::get_IsLastSpurt(race_info);
+        stats.last_spurt_start_distance = HorseRaceInfoReplay::get__lastSpurtStartDistance(race_info);
+        stats.finish_order = HorseRaceInfoReplay::get_FinishOrder(race_info);
+        stats.finish_time_scaled = HorseRaceInfoReplay::get_FinishTimeScaled(race_info);
+        stats.finish_time_diff = HorseRaceInfoReplay::get_FinishTimeDiffFromPrevHorse(race_info);
+
+        stats.accel = sim_rates.accel;
+        stats.hp_drain = sim_rates.hp_drain;
+
+        let skill_manager = HorseRaceInfo::get__skillManager(race_info);
+        stats.used_skill_ids.clear();
+        stats.all_skill_ids.clear();
+
+        if !skill_manager.is_null() {
+            if let Some(list) = IList::<i32>::new(SkillManager::GetUsedSkillIdList(skill_manager)) {
+                for skill_id in list.iter() {
+                    stats.used_skill_ids.push(skill_id);
+                }
+            }
+
+            let skills_array = SkillManager::GetSkills(skill_manager);
+            if !skills_array.is_null() {
+                let arr: Array<*mut Il2CppObject> = Array::from(skills_array);
+                for i in 0..arr.len() {
+                    let skill_obj = unsafe { arr.as_slice()[i] };
+                    if !skill_obj.is_null() {
+                        stats.all_skill_ids.push(SkillBase::get_SkillMasterId(skill_obj));
+                    }
+                }
+            }
+        }
+
+        true
+    }
+}
+
 static DISABLED_GAME_UIS: Lazy<Mutex<FnvHashSet<SendPtr>>> =
     Lazy::new(|| Mutex::new(FnvHashSet::default()));
 static PLUGIN_MENU_ITEMS: Lazy<Mutex<Vec<PluginMenuItem>>> = Lazy::new(|| Mutex::new(Vec::new()));
@@ -437,15 +2146,15 @@ pub fn handle_android_keyboard<T: 'static>(res: &egui::Response, val: &mut T) {
     use egui::{text::{CCursor, CCursorRange}, widgets::text_edit::TextEditState};
 
     let val_any = val as &dyn std::any::Any;
-    PENDING_KB_TYPE.store(TouchScreenKeyboardType::KeyboardType::Default as i32, atomic::Ordering::Release);
+    PENDING_KB_TYPE.store(TouchScreenKeyboardType::Default as i32, atomic::Ordering::Release);
 
     let text = if let Some(s) = val_any.downcast_ref::<String>() {
         s.clone()
     } else if let Some(f) = val_any.downcast_ref::<f32>() {
-        PENDING_KB_TYPE.store(TouchScreenKeyboardType::KeyboardType::DecimalPad as i32, atomic::Ordering::Release);
+        PENDING_KB_TYPE.store(TouchScreenKeyboardType::DecimalPad as i32, atomic::Ordering::Release);
         if f.fract() == 0.0 { format!("{:.1}", f) } else { f.to_string() }
     } else if let Some(i) = val_any.downcast_ref::<i32>() {
-        PENDING_KB_TYPE.store(TouchScreenKeyboardType::KeyboardType::NumberPad as i32, atomic::Ordering::Release);
+        PENDING_KB_TYPE.store(TouchScreenKeyboardType::NumberPad as i32, atomic::Ordering::Release);
         i.to_string()
     } else {
         String::new()
@@ -480,7 +2189,7 @@ pub fn handle_android_keyboard<T: 'static>(res: &egui::Response, val: &mut T) {
 
         Thread::main_thread().schedule(|| {
             let ptr = PENDING_KEYBOARD_TEXT.swap(std::ptr::null_mut(), atomic::Ordering::AcqRel);
-            let typ: TouchScreenKeyboardType::KeyboardType = unsafe { *(&PENDING_KB_TYPE.load(atomic::Ordering::Acquire) as *const i32 as *const TouchScreenKeyboardType::KeyboardType) };
+            let typ: TouchScreenKeyboardType = unsafe { *(&PENDING_KB_TYPE.load(atomic::Ordering::Acquire) as *const i32 as *const TouchScreenKeyboardType) };
 
             if !ptr.is_null() {
                 let keyboard = TouchScreenKeyboard::Open(ptr, typ, false, false, false);
@@ -563,7 +2272,7 @@ impl Gui {
         visuals.extreme_bg_color = config.ui_extreme_bg_color;
         visuals.window_corner_radius = config.ui_window_rounding.into();
 
-        visuals.widgets.noninteractive.fg_stroke = egui::Stroke::new(1.0, config.ui_text_color);
+        visuals.widgets.noninteractive.fg_stroke = egui::Stroke::new(1.0_f32, config.ui_text_color);
 
         visuals.widgets.active.bg_fill = config.ui_accent_color;
         visuals.widgets.hovered.bg_fill = config.ui_accent_color.linear_multiply(0.8);
@@ -655,6 +2364,8 @@ impl Gui {
 
             update_progress_visible: false,
 
+            live_slider_text: String::new(),
+
             notifications: Vec::new(),
             next_notification_id: 0,
             windows,
@@ -678,9 +2389,11 @@ impl Gui {
         let mut fonts = egui::FontDefinitions::default();
         let proportional_fonts = fonts.families.get_mut(&egui::FontFamily::Proportional).unwrap();
 
+        add_font!(fonts, proportional_fonts, "FontAwesome.otf");
         add_font!(fonts, proportional_fonts, "Inter_24pt-Regular.ttf");
         add_font!(fonts, proportional_fonts, "AlibabaPuHuiTi-3-45-Light.otf");
-        add_font!(fonts, proportional_fonts, "FontAwesome.otf");
+        add_font!(fonts, proportional_fonts, "MPLUS1-Regular.ttf");
+        add_font!(fonts, proportional_fonts, "Pretendard-Regular.ttf");
 
         fonts
     }
@@ -801,9 +2514,13 @@ impl Gui {
 
         let scene = SceneManager::GetActiveScene();
         let name_ptr = Scene::GetNameInternal(scene.handle);
-        let scene_name = if name_ptr.is_null() { String::new() } else { unsafe { (*name_ptr).as_utf16str().to_string() } };
+        let is_live_scene = if !name_ptr.is_null() {
+            unsafe { (*name_ptr).as_utf16str() == "Live" }
+        } else {
+            false
+        };
 
-        if scene_name != "Live" {
+        if !is_live_scene {
             if IS_LIVE_SLIDER_ACTIVE.load(atomic::Ordering::Acquire) {
                 ctx.input(|_i| {});
             }
@@ -823,8 +2540,18 @@ impl Gui {
         if total <= 0.0 { return; }
 
         if config.live_playback_loop && current >= total - 0.1 {
-            live_utils::move_live_playback(0.0);
-            current = 0.0;
+            if live_utils::should_loop_restart(current, total) {
+                live_utils::begin_live_drag();
+                live_utils::move_live_playback(0.0);
+                live_utils::end_live_drag();
+                current = 0.0;
+            }
+        }
+
+        if !Director::is_live_playing() {
+            IS_LIVE_SLIDER_ACTIVE.store(false, atomic::Ordering::Release);
+            live_utils::reset_live_drag_state();
+            return;
         }
 
         let is_paused = Director::is_live_paused();
@@ -850,7 +2577,9 @@ impl Gui {
                             let curr_s = (current % 60.0).floor() as i32;
                             let tot_m = (total / 60.0).floor() as i32;
                             let tot_s = (total % 60.0).floor() as i32;
-                            ui.label(format!("{:02}:{:02} / {:02}:{:02}", curr_m, curr_s, tot_m, tot_s));
+                            self.live_slider_text.clear();
+                            let _ = write!(self.live_slider_text, "{:02}:{:02} / {:02}:{:02}", curr_m, curr_s, tot_m, tot_s);
+                            ui.label(&self.live_slider_text);
 
                             let available_w = ui.available_width();
 
@@ -928,6 +2657,7 @@ impl Gui {
         self.process_plugin_windows();
         self.run_windows();
         self.run_notifications();
+        #[cfg(target_os = "windows")]
         self.run_free_camera_overlay();
 
         if self.splash_visible { self.run_splash(); }
@@ -1019,17 +2749,37 @@ impl Gui {
 
         let ctx = self.context.clone();
         self.run_live_slider(&ctx);
+        RaceStatHud::run(&ctx);
 
         let has_interactive_widgets = IS_LIVE_SCENE.load(atomic::Ordering::Relaxed);
+        let race_stat_hud_input = RaceStatHud::is_active();
+        #[cfg(target_os = "windows")]
         let free_camera_input_capture = free_camera::wants_windows_input_capture();
 
         // Store these as atomic values so the input thread can check them without locking the gui
-        GUI_INPUT_ACTIVE.store(self.is_consuming_input(), atomic::Ordering::Release);
+        #[cfg(target_os = "android")]
         IS_CONSUMING_INPUT.store(
-            self.is_consuming_input() || has_interactive_widgets || free_camera_input_capture,
+            self.is_consuming_input() || has_interactive_widgets || race_stat_hud_input,
+            atomic::Ordering::Release
+        );
+        #[cfg(target_os = "windows")]
+        {
+            GUI_INPUT_ACTIVE.store(self.menu_visible || !self.windows.is_empty(), atomic::Ordering::Release);
+            IS_CONSUMING_INPUT.store(
+                self.is_consuming_input() || has_interactive_widgets || race_stat_hud_input || free_camera_input_capture,
+                atomic::Ordering::Release
+            );
+        }
+
+        #[cfg(target_os = "android")]
+        WANTS_INPUT.store(
+            self.context.wants_pointer_input() || 
+            self.context.is_pointer_over_area() || 
+            self.context.wants_keyboard_input(),
             atomic::Ordering::Release
         );
 
+        #[cfg(target_os = "windows")]
         WANTS_INPUT.store(
             self.context.wants_pointer_input() || 
             self.context.is_pointer_over_area() || 
@@ -1174,7 +2924,7 @@ impl Gui {
                         ui.heading(t!("menu.graphics_heading"));
                         ui.horizontal(|ui| {
                             ui.label(t!("menu.fps_label"));
-                            let res = ui.add(egui::Slider::new(&mut self.menu_fps_value, 30..=1000));
+                            let res = ui.add(egui::Slider::new(&mut self.menu_fps_value, 30..=690));
                             if res.lost_focus() || res.drag_stopped() {
                                 hachimi.target_fps.store(self.menu_fps_value, atomic::Ordering::Relaxed);
                                 Thread::main_thread().schedule(|| {
@@ -1493,6 +3243,32 @@ impl Gui {
         changed
     }
 
+    fn run_chip(
+        ui: &mut egui::Ui,
+        name: &str,
+        bg: egui::Color32,
+        border: egui::Color32,
+        text_color:
+        egui::Color32,
+        scale: f32
+    ) {
+        let font = egui::FontId::proportional(12.0 * scale);
+        let padding = egui::vec2(6.0 * scale, 3.0 * scale);
+        let wrap_w = (ui.max_rect().width() - padding.x * 2.0).max(24.0 * scale);
+        let natural = ui.painter().layout_no_wrap(name.to_owned(), font.clone(), text_color);
+        let galley = if natural.size().x <= wrap_w {
+            natural
+        } else {
+            ui.painter().layout(name.to_owned(), font, text_color, wrap_w)
+        };
+        let size = galley.size() + padding * 2.0;
+        let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
+        let radius = egui::CornerRadius::same((3.0 * scale) as u8);
+        ui.painter().rect_filled(rect, radius, bg);
+        ui.painter().rect_stroke(rect, radius, egui::Stroke::new(1.0 * scale, border), egui::StrokeKind::Inside);
+        ui.painter().galley(rect.min + padding, galley, text_color);
+    }
+
     fn run_combo_menu<T: PartialEq + Copy>(
         ui: &mut egui::Ui,
         id_salt: impl std::hash::Hash,
@@ -1583,8 +3359,9 @@ impl Gui {
                 ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
 
                 ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
+                    let search_lower = search_term.to_lowercase();
                     for (choice_val, label) in choices {
-                        if !search_term.is_empty() && !label.to_lowercase().contains(&search_term.to_lowercase()) {
+                        if !search_lower.is_empty() && !label.to_lowercase().contains(&search_lower) {
                             continue;
                         }
 
@@ -1666,6 +3443,7 @@ impl Gui {
         self.notifications.retain_mut(|n| n.run(&self.context, &mut offset));
     }
 
+    #[cfg(target_os = "windows")]
     fn run_free_camera_overlay(&mut self) {
         let Some((content, alpha)) = free_camera::overlay_message() else {
             return;
@@ -1696,10 +3474,21 @@ impl Gui {
     }
 
     pub fn is_empty(&self) -> bool {
-        !self.splash_visible && !self.menu_visible && !self.update_progress_visible &&
-        self.notifications.is_empty() && self.windows.is_empty() &&
-        !IS_LIVE_SCENE.load(atomic::Ordering::Acquire) &&
-        !free_camera::has_overlay_message()
+        #[cfg(target_os = "windows")]
+        {
+            !self.splash_visible && !self.menu_visible && !self.update_progress_visible &&
+            self.notifications.is_empty() && self.windows.is_empty() &&
+            !IS_LIVE_SCENE.load(atomic::Ordering::Acquire) &&
+            !free_camera::has_overlay_message() &&
+            !RaceStatHud::elements_showing() && !RaceStatHud::is_active()
+        }
+        #[cfg(target_os = "android")]
+        {
+            !self.splash_visible && !self.menu_visible && !self.update_progress_visible &&
+            self.notifications.is_empty() && self.windows.is_empty() &&
+            !IS_LIVE_SCENE.load(atomic::Ordering::Acquire) &&
+            !RaceStatHud::elements_showing() && !RaceStatHud::is_active()
+        }
     }
 
     pub fn is_consuming_input(&self) -> bool {
@@ -1711,7 +3500,7 @@ impl Gui {
     }
 
     pub fn is_gui_input_active_atomic() -> bool {
-        GUI_INPUT_ACTIVE.load(atomic::Ordering::Relaxed)
+        GUI_INPUT_ACTIVE.load(atomic::Ordering::Acquire)
     }
 
     pub fn set_consuming_input(&mut self, val: bool) {
@@ -1720,7 +3509,6 @@ impl Gui {
         }
 
         self.menu_visible = val;
-        GUI_INPUT_ACTIVE.store(val, atomic::Ordering::Release);
         IS_CONSUMING_INPUT.store(val, atomic::Ordering::Release);
     }
 
@@ -2275,32 +4063,6 @@ struct ConfigEditor {
     outline_color_options: Vec<String>,
 }
 
-fn get_enum_options(class_name: &std::ffi::CStr) -> Vec<String> {
-    use crate::il2cpp::{api::*, symbols::get_assembly_image, symbols::get_class};
-    let mut options = Vec::new();
-    let Ok(image) = get_assembly_image(c"umamusume.dll") else { return options };
-    let Ok(klass) = get_class(image, c"Gallop", class_name) else { return options };
-
-    if !il2cpp_class_is_enum(klass) { return options; }
-
-    let mut iter: *mut std::ffi::c_void = std::ptr::null_mut();
-    loop {
-        let field = il2cpp_class_get_fields(klass, &mut iter);
-        if field.is_null() { break; }
-        let attrs = il2cpp_field_get_flags(field);
-        if (attrs & 0x0040) != 0 {
-            let name_ptr = il2cpp_field_get_name(field);
-            if !name_ptr.is_null() {
-                let name = unsafe { std::ffi::CStr::from_ptr(name_ptr) };
-                if let Ok(s) = name.to_str() {
-                    options.push(s.to_string());
-                }
-            }
-        }
-    }
-    options
-}
-
 #[derive(Eq, PartialEq, Clone, Copy)]
 enum ConfigEditorTab {
     General,
@@ -2333,9 +4095,9 @@ impl ConfigEditor {
             search_term: String::new(),
             champions_resources: crate::il2cpp::sql::get_champions_resources(),
             champions_live_max_year: crate::il2cpp::sql::get_champions_live_max_year(),
-            font_color_options: get_enum_options(c"FontColorType"),
-            outline_size_options: get_enum_options(c"OutlineSizeType"),
-            outline_color_options: get_enum_options(c"OutlineColorType"),
+            font_color_options: umamusume_enum_options(c"FontColorType"),
+            outline_size_options: umamusume_enum_options(c"OutlineSizeType"),
+            outline_color_options: umamusume_enum_options(c"OutlineColorType"),
         }
     }
 
@@ -2674,6 +4436,23 @@ impl ConfigEditor {
                     ui.checkbox(&mut config.windows.taskbar_show_progress_on_connecting, "");
                     ui.end_row();
                 }
+
+                if should_show_option(search, &t!("config_editor.taskbar_show_progress_on_schedule_book")) {
+                    ui.label(t!("config_editor.taskbar_show_progress_on_schedule_book"));
+                    ui.checkbox(&mut config.windows.taskbar_show_progress_on_schedule_book, "");
+                    ui.end_row();
+                }
+            }
+
+            #[cfg(target_os = "windows")]
+            {
+                if Hachimi::instance().game.region == Region::Japan
+                    && crate::windows::webview::has_available_webview()
+                    && should_show_option(search,&t!("config_editor.ingame_webview")) {
+                    ui.label(t!("config_editor.ingame_webview"));
+                    ui.checkbox(&mut config.windows.ingame_webview, "");
+                    ui.end_row();
+                }
             }
         }
         // General tab end
@@ -2681,7 +4460,7 @@ impl ConfigEditor {
         // Graphics tab
         if show_all || tab == ConfigEditorTab::Graphics {
             if should_show_option(search, &t!("config_editor.target_fps")) {
-                Self::option_slider(ui, &t!("config_editor.target_fps"), &mut config.target_fps, 30..=1000);
+                Self::option_slider(ui, &t!("config_editor.target_fps"), &mut config.target_fps, 30..=690);
             }
 
             if should_show_option(search, &t!("config_editor.virtual_resolution_multiplier")) {
@@ -2694,6 +4473,29 @@ impl ConfigEditor {
                 ui.label(t!("config_editor.ui_scale"));
                 ui.add(egui::Slider::new(&mut config.ui_scale, 0.1..=10.0).step_by(0.05));
                 ui.end_row();
+            }
+
+            #[cfg(target_os = "android")]
+            {
+                if should_show_option(search, &t!("config_editor.recommended_ui_scale"))
+                    && config.android.force_orientation_mode == ScreenOrientation_LandscapeLeft {
+                    ui.label("");
+                    if ui.button(t!("config_editor.recommended_ui_scale")).clicked() {
+                        config.ui_scale = 0.6;
+                        request_notification(NotificationRequest::Custom(t!("notification.recommended_ui_scale_applied").to_string()));
+                    }
+                    ui.end_row();
+                }
+
+                if should_show_option(search, &t!("config_editor.force_orientation_mode")) {
+                    ui.label(t!("config_editor.force_orientation_mode"));
+                    Gui::run_combo(ui, "force_orientation_mode", &mut config.android.force_orientation_mode, &[
+                        (ScreenOrientation_Unknown, &t!("disabled")),
+                        (ScreenOrientation_LandscapeLeft, &t!("landscape")),
+                        (ScreenOrientation_Portrait, &t!("portrait")),
+                    ]);
+                    ui.end_row();
+                }
             }
 
             if should_show_option(search, &t!("config_editor.ui_animation_scale")) {
@@ -2711,7 +4513,7 @@ impl ConfigEditor {
             if should_show_option(search, &t!("config_editor.msaa")) {
                 ui.label(t!("config_editor.msaa"));
                 Gui::run_combo(ui, "msaa", &mut config.msaa, &[
-                    (MsaaQuality:: Disabled, &t!("default")),
+                    (MsaaQuality::Disabled, &t!("default")),
                     (MsaaQuality::_2x, "2x"),
                     (MsaaQuality::_4x, "4x"),
                     (MsaaQuality::_8x, "8x")
@@ -2879,36 +4681,49 @@ impl ConfigEditor {
 
             #[cfg(target_os = "windows")]
             {
-                if should_show_option(search, &t!("config_editor.free_camera")) {
+                if should_show_option(search, &t!("config_editor.free_camera")) && Hachimi::instance().game.region != Region::Global {
                     ui.label(t!("config_editor.free_camera"));
-                    let was_enabled = config.free_camera.enabled;
-                    if ui.checkbox(&mut config.free_camera.enabled, "").changed() &&
-                        !was_enabled &&
-                        config.free_camera.enabled
-                    {
-                        thread::spawn(|| {
-                            Gui::instance().unwrap()
-                                .lock().unwrap()
-                                .show_notification(&t!("notification.free_camera_input_disabled"));
-                        });
-                    }
+                    ui.checkbox(&mut config.windows.free_camera.enabled, "");
                     ui.end_row();
 
-                    ui.label("");
-                    if ui.button(t!("config_editor.free_camera_settings")).clicked() {
-                        thread::spawn(|| {
-                            Gui::instance().unwrap()
-                            .lock().unwrap()
-                            .show_window(Box::new(FreeCameraSettingsWindow::new()));
-                        });
+                    if config.windows.free_camera.enabled {
+                        ui.label("");
+                        if ui.button(t!("free_camera.settings_title")).clicked() {
+                            thread::spawn(|| {
+                                Gui::instance().unwrap()
+                                .lock().unwrap()
+                                .show_window(Box::new(FreeCameraSettingsWindow::new()));
+                            });
+                        }
+                        ui.end_row();
+
+                        ui.label("");
+                        if ui.button(t!("free_camera.cheatsheet_title")).clicked() {
+                            thread::spawn(move || {
+                                Gui::instance().unwrap()
+                                .lock().unwrap()
+                                .show_window(Box::new(SimpleMarkdownDialog::new_with_height(
+                                    &t!("free_camera.cheatsheet_title"),
+                                    &t!("free_camera.cheatsheet_contents"),
+                                    400.0,
+                                    500.0
+                                )));
+                            });
+                        }
+                        ui.end_row();
                     }
-                    ui.end_row();
                 }
             }
 
             if should_show_option(search, &t!("config_editor.live_theater_allow_same_chara")) {
                 ui.label(t!("config_editor.live_theater_allow_same_chara"));
                 ui.checkbox(&mut config.live_theater_allow_same_chara, "");
+                ui.end_row();
+            }
+
+            if should_show_option(search, &t!("config_editor.trainer_live_landscape")) {
+                ui.label(t!("config_editor.trainer_live_landscape"));
+                ui.checkbox(&mut config.trainer_live_landscape, "");
                 ui.end_row();
             }
 
@@ -2926,7 +4741,7 @@ impl ConfigEditor {
                 ui.end_row();
             }
 
-            if should_show_option(search, &t!("config_editor.skill_info_dialog")) {
+            if should_show_option(search, &t!("config_editor.skill_info_dialog")) && Hachimi::instance().game.region == Region::Japan {
                 ui.label(t!("config_editor.skill_info_dialog"));
                 ui.checkbox(&mut config.skill_info_dialog, "");
                 ui.end_row();
@@ -2934,25 +4749,17 @@ impl ConfigEditor {
 
             if should_show_option(search, &t!("config_editor.homescreen_bgseason")) {
                 ui.label(t!("config_editor.homescreen_bgseason"));
-                // Season text from TextId enum
-                let default_label = t!("default");
-                let spring = get_localized_string("Common0108");
-                let summer = get_localized_string("Common0109");
-                let fall = get_localized_string("Common0110");
-                let winter = get_localized_string("Common0111");
-                let cherry = get_localized_string("Common0112");
+                let localized_data = Hachimi::instance().localized_data.load();
+                let get = |k, default| localized_data.localize_dict.get(k).map_or(default, |s| s.as_str());
 
-                let mut seasons: Vec<(BgSeason, &str)> = vec![
-                    (BgSeason::None, &default_label),
-                    (BgSeason::Spring, spring.as_str())
-                ];
-                if Hachimi::instance().game.region == Region::Japan {
-                    seasons.push((BgSeason::Summer, summer.as_str()));
-                    seasons.push((BgSeason::Fall, fall.as_str()));
-                    seasons.push((BgSeason::Winter, winter.as_str()));
-                    seasons.push((BgSeason::CherryBlossom, cherry.as_str()));
-                }
-                Gui::run_combo(ui, "homescreen_bgseason", &mut config.homescreen_bgseason, &seasons);
+                Gui::run_combo(ui, "homescreen_bgseason", &mut config.homescreen_bgseason, &[
+                    (BgSeason::None, t!("default").as_ref()),
+                    (BgSeason::Spring, get("Common0108", t!("spring").as_ref())),
+                    (BgSeason::Summer, get("Common0109", t!("summer").as_ref())),
+                    (BgSeason::Fall, get("Common0110", t!("fall").as_ref())),
+                    (BgSeason::Winter, get("Common0111", t!("winter").as_ref())),
+                    (BgSeason::CherryBlossom, get("Common0112", t!("cherry_blossom").as_ref())),
+                ]);
                 ui.end_row();
             }
 
@@ -2978,6 +4785,135 @@ impl ConfigEditor {
                         });
                     }
                 }
+                ui.end_row();
+            }
+
+            if should_show_option(search, &t!("config_editor.hide_ingame_ui_hotkey_bind")) && config.hide_ingame_ui_hotkey {
+                ui.label(t!("config_editor.hide_ingame_ui_hotkey_bind"));
+                ui.horizontal(|ui| {
+                    #[cfg(target_os = "windows")]
+                    ui.label(crate::windows::utils::vk_to_display_label(config.windows.hide_ingame_ui_hotkey_bind));
+                    #[cfg(target_os = "android")]
+                    ui.label(crate::android::gui_impl::keymap::keycode_display_label(config.android.hide_ingame_ui_hotkey_bind));
+
+                    if ui.button(t!("bind_key")).clicked() {
+                        std::thread::spawn(|| {
+                            let Some(gui_mutex) = Gui::instance() else { return };
+                            let mut gui = gui_mutex.lock().unwrap();
+                            gui.show_window(Box::new(SetKeybindWindow::new(|result| {
+                                let Some(raw) = result else { return };
+
+                                let hachimi = Hachimi::instance();
+                                let mut new_config = hachimi.config.load().as_ref().clone();
+
+                                #[cfg(target_os = "windows")]
+                                { new_config.windows.hide_ingame_ui_hotkey_bind = raw; }
+                                #[cfg(target_os = "android")]
+                                { new_config.android.hide_ingame_ui_hotkey_bind = raw; }
+
+                                save_and_reload_config(new_config);
+                            })));
+                        });
+                    }
+                });
+                ui.end_row();
+            }
+
+            if should_show_option(search, &t!("config_editor.race_stat_hud")) && Hachimi::instance().game.region == Region::Japan {
+                ui.label(t!("config_editor.race_stat_hud"));
+                ui.checkbox(&mut config.race_stat_hud, "");
+                ui.end_row();
+            }
+
+            if should_show_option(search, &t!("config_editor.race_stat_hud_toggle_button")) && Hachimi::instance().game.region == Region::Japan
+                && config.race_stat_hud {
+                ui.label(t!("config_editor.race_stat_hud_toggle_button"));
+                ui.checkbox(&mut config.race_stat_hud_toggle_button, "");
+                ui.end_row();
+            }
+
+            if should_show_option(search, &t!("config_editor.race_stat_hud_toggle_key")) && Hachimi::instance().game.region == Region::Japan
+                && config.race_stat_hud {
+                ui.label(t!("config_editor.race_stat_hud_toggle_key"));
+                ui.horizontal(|ui| {
+                    #[cfg(target_os = "windows")]
+                    ui.label(crate::windows::utils::vk_to_display_label(config.windows.race_stat_hud_toggle_key));
+                    #[cfg(target_os = "android")]
+                    ui.label(crate::android::gui_impl::keymap::keycode_display_label(config.android.race_stat_hud_toggle_key));
+
+                    if ui.button(t!("bind_key")).clicked() {
+                        std::thread::spawn(|| {
+                            let Some(gui_mutex) = Gui::instance() else { return };
+                            let mut gui = gui_mutex.lock().unwrap();
+                            gui.show_window(Box::new(SetKeybindWindow::new(|result| {
+                                let Some(raw) = result else { return };
+
+                                let hachimi = Hachimi::instance();
+                                let mut new_config = hachimi.config.load().as_ref().clone();
+
+                                #[cfg(target_os = "windows")]
+                                { new_config.windows.race_stat_hud_toggle_key = raw; }
+                                #[cfg(target_os = "android")]
+                                { new_config.android.race_stat_hud_toggle_key = raw; }
+
+                                save_and_reload_config(new_config);
+                            })));
+                        });
+                    }
+                });
+                ui.end_row();
+            }
+
+            #[cfg(target_os = "windows")]
+            if should_show_option(search, &t!("config_editor.race_stat_hud_landscapeui_portrait")) && Hachimi::instance().game.region == Region::Japan
+                && config.race_stat_hud {
+                ui.label(t!("config_editor.race_stat_hud_landscapeui_portrait"));
+                ui.checkbox(&mut config.windows.race_stat_hud_landscapeui_portrait, "");
+                ui.end_row();
+            }
+
+            if should_show_option(search, &t!("config_editor.race_stat_hud_draggable")) && Hachimi::instance().game.region == Region::Japan
+                && config.race_stat_hud {
+                ui.label(t!("config_editor.race_stat_hud_draggable"));
+                ui.horizontal(|ui| {
+                    ui.checkbox(&mut config.race_stat_hud_draggable, "");
+                    if ui.button(t!("reset")).clicked() {
+                        config.race_stat_hud_drag_x = -1.0;
+                        config.race_stat_hud_drag_y = -1.0;
+                        let mut new_config = Hachimi::instance().config.load().as_ref().clone();
+                        new_config.race_stat_hud_drag_x = -1.0;
+                        new_config.race_stat_hud_drag_y = -1.0;
+                        save_and_reload_config(new_config);
+                        if let Ok(mut hud) = RACE_STAT_HUD.lock() {
+                            hud.drag_pos = None;
+                        }
+                    }
+                });
+                ui.end_row();
+            }
+
+            if should_show_option(search, &t!("config_editor.race_stat_hud_draggable_save")) && Hachimi::instance().game.region == Region::Japan
+                && config.race_stat_hud && config.race_stat_hud_draggable {
+                ui.label(t!("config_editor.race_stat_hud_draggable_save"));
+                ui.checkbox(&mut config.race_stat_hud_draggable_save, "");
+                ui.end_row();
+            }
+
+            if should_show_option(search, &t!("config_editor.race_stat_hud_width_scale")) && Hachimi::instance().game.region == Region::Japan
+                && config.race_stat_hud {
+                ui.label(t!("config_editor.race_stat_hud_width_scale"));
+                ui.add(egui::Slider::new(&mut config.race_stat_hud_width_scale,
+                    RACE_STAT_HUD_WIDTH_SCALE_MIN..=RACE_STAT_HUD_WIDTH_SCALE_MAX
+                ).step_by(0.05).fixed_decimals(2));
+                ui.end_row();
+            }
+
+            if should_show_option(search, &t!("config_editor.race_stat_hud_height_scale")) && Hachimi::instance().game.region == Region::Japan
+                && config.race_stat_hud {
+                ui.label(t!("config_editor.race_stat_hud_height_scale"));
+                ui.add(egui::Slider::new(&mut config.race_stat_hud_height_scale,
+                    RACE_STAT_HUD_HEIGHT_SCALE_MIN..=RACE_STAT_HUD_HEIGHT_SCALE_MAX
+                ).step_by(0.05).fixed_decimals(2));
                 ui.end_row();
             }
 
@@ -3088,34 +5024,9 @@ impl ConfigEditor {
                 }
             }
 
-            if should_show_option(search, &t!("config_editor.hide_ingame_ui_hotkey_bind")) {
-                ui.label(t!("config_editor.hide_ingame_ui_hotkey_bind"));
-                ui.horizontal(|ui| {
-                    #[cfg(target_os = "windows")]
-                    ui.label(crate::windows::utils::vk_to_display_label(config.windows.hide_ingame_ui_hotkey_bind));
-                    #[cfg(target_os = "android")]
-                    ui.label(crate::android::gui_impl::keymap::keycode_display_label(config.android.hide_ingame_ui_hotkey_bind));
-
-                    if ui.button(t!("bind_key")).clicked() {
-                        std::thread::spawn(|| {
-                            let Some(gui_mutex) = Gui::instance() else { return };
-                            let mut gui = gui_mutex.lock().unwrap();
-                            gui.show_window(Box::new(SetKeybindWindow::new(|result| {
-                                let Some(raw) = result else { return };
-
-                                let hachimi = Hachimi::instance();
-                                let mut new_config = hachimi.config.load().as_ref().clone();
-
-                                #[cfg(target_os = "windows")]
-                                { new_config.windows.hide_ingame_ui_hotkey_bind = raw; }
-                                #[cfg(target_os = "android")]
-                                { new_config.android.hide_ingame_ui_hotkey_bind = raw; }
-
-                                save_and_reload_config(new_config);
-                            })));
-                        });
-                    }
-                });
+            if should_show_option(search, &t!("config_editor.disable_tap_effect")) {
+                ui.label(t!("config_editor.disable_tap_effect"));
+                ui.checkbox(&mut config.disable_tap_effect, "");
                 ui.end_row();
             }
         }
@@ -3142,7 +5053,7 @@ impl Window for ConfigEditor {
             self.config = (**global_handle).clone();
             self.last_ptr_config = global_ptr;
         }
-        let mut config = self.config.clone();
+        let mut config = std::mem::take(&mut self.config);
         #[cfg(target_os = "windows")]
         {
             config.windows.menu_open_key = global_handle.windows.menu_open_key;
@@ -3294,9 +5205,12 @@ fn save_and_reload_config(config: hachimi::Config) {
     let notif = match Hachimi::instance().save_and_reload_config(config) {
         Ok(_) => {
             #[cfg(target_os = "windows")]
-            crate::windows::wnd_hook::apply_freeform_window_config();
-            free_camera::reload_runtime_config();
-
+            {
+                if Hachimi::instance().game.region != Region::Global {
+                    crate::windows::wnd_hook::apply_freeform_window_config();
+                    free_camera::reload_runtime_config();
+                }
+            }
             t!("notification.config_saved").into_owned()
         },
         Err(e) => e.to_string()
@@ -3318,7 +5232,8 @@ struct FirstTimeSetupWindow {
     index_request: Arc<AsyncRequest<Vec<RepoInfo>>>,
     current_page: usize,
     current_tl_repo: Option<String>,
-    has_auto_selected: bool
+    has_auto_selected: bool,
+    pending_keybind: Arc<Mutex<Option<RawKeybind>>>
 }
 
 impl FirstTimeSetupWindow {
@@ -3331,7 +5246,8 @@ impl FirstTimeSetupWindow {
             index_request: Arc::new(tl_repo::new_meta_index_request()),
             current_page: 0,
             current_tl_repo: None,
-            has_auto_selected: false
+            has_auto_selected: false,
+            pending_keybind: Arc::new(Mutex::new(None))
         }
     }
 }
@@ -3340,6 +5256,13 @@ impl Window for FirstTimeSetupWindow {
     fn run(&mut self, ctx: &egui::Context) -> bool {
         let mut open = true;
         let mut page_open = true;
+
+        if let Some(raw) = self.pending_keybind.lock().unwrap().take() {
+            #[cfg(target_os = "windows")]
+            { self.config.windows.menu_open_key = raw; }
+            #[cfg(target_os = "android")]
+            { self.config.android.menu_open_key = raw; }
+        }
 
         new_window(ctx, self.id, t!("first_time_setup.title"))
         .open(&mut open)
@@ -3442,7 +5365,7 @@ impl Window for FirstTimeSetupWindow {
                         if let Some(ref mut fps) = self.config.target_fps {
                             ui.horizontal(|ui| {
                                 ui.label("");
-                                let _ = ui.add(egui::Slider::new(fps, 30..=1000));
+                                let _ = ui.add(egui::Slider::new(fps, 30..=690));
                             });
                         }
                         ui.horizontal(|ui| {
@@ -3457,14 +5380,15 @@ impl Window for FirstTimeSetupWindow {
                             ui.label(crate::android::gui_impl::keymap::keycode_display_label(self.config.android.menu_open_key));
 
                             if ui.button(t!("bind_key")).clicked() {
-                                let config_clone = self.config.clone();
+                                let keybind_slot = self.pending_keybind.clone();
                                 std::thread::spawn(move || {
                                     let Some(gui_mutex) = Gui::instance() else { return };
                                     let mut gui = gui_mutex.lock().unwrap();
                                     gui.show_window(Box::new(SetKeybindWindow::new(move |result| {
                                         let Some(raw) = result else { return };
 
-                                        let mut new_config = config_clone.clone();
+                                        let hachimi = Hachimi::instance();
+                                        let mut new_config = hachimi.config.load().as_ref().clone();
 
                                         #[cfg(target_os = "windows")]
                                         { new_config.windows.menu_open_key = raw; }
@@ -3472,6 +5396,8 @@ impl Window for FirstTimeSetupWindow {
                                         { new_config.android.menu_open_key = raw; }
 
                                         save_and_reload_config(new_config);
+
+                                        *keybind_slot.lock().unwrap() = Some(raw);
                                     })));
                                 });
                             }
@@ -3617,11 +5543,13 @@ impl Window for LiveVocalsSwapWindow {
     }
 }
 
+#[cfg(target_os = "windows")]
 struct FreeCameraSettingsWindow {
     id: egui::Id,
     config: hachimi::Config,
 }
 
+#[cfg(target_os = "windows")]
 impl FreeCameraSettingsWindow {
     fn new() -> FreeCameraSettingsWindow {
         FreeCameraSettingsWindow {
@@ -3630,7 +5558,6 @@ impl FreeCameraSettingsWindow {
         }
     }
 
-    #[cfg(target_os = "windows")]
     fn keybind_row(
         ui: &mut egui::Ui,
         label: Cow<'static, str>,
@@ -3647,7 +5574,6 @@ impl FreeCameraSettingsWindow {
         ui.end_row();
     }
 
-    #[cfg(target_os = "windows")]
     fn open_keybind_window(setter: fn(&mut free_camera::FreeCameraKeybinds, u16)) {
         thread::spawn(move || {
             let Some(gui_mutex) = Gui::instance() else { return };
@@ -3657,13 +5583,14 @@ impl FreeCameraSettingsWindow {
 
                 let hachimi = Hachimi::instance();
                 let mut new_config = hachimi.config.load().as_ref().clone();
-                setter(&mut new_config.free_camera.keybinds, raw);
+                setter(&mut new_config.windows.free_camera.keybinds, raw);
                 save_and_reload_config(new_config);
             })));
         });
     }
 }
 
+#[cfg(target_os = "windows")]
 impl Window for FreeCameraSettingsWindow {
     fn run(&mut self, ctx: &egui::Context) -> bool {
         let scale = get_scale(ctx);
@@ -3672,11 +5599,8 @@ impl Window for FreeCameraSettingsWindow {
         let mut save_clicked = false;
         let mut reset_clicked = false;
 
-        #[cfg(target_os = "windows")]
-        {
-            self.config.free_camera.keybinds =
-                Hachimi::instance().config.load().free_camera.keybinds.clone();
-        }
+        self.config.windows.free_camera.keybinds =
+            Hachimi::instance().config.load().windows.free_camera.keybinds.clone();
 
         let mode_free = t!("free_camera.mode_free");
         let mode_first_person = t!("free_camera.mode_first_person");
@@ -3697,35 +5621,33 @@ impl Window for FreeCameraSettingsWindow {
             .map(|(i, (name, _))| (i as i32, *name))
             .collect();
 
-        new_window(ctx, self.id, t!("free_camera.title"))
+        new_window(ctx, self.id, t!("free_camera.settings_title"))
         .default_width(340.0 * scale)
         .max_width(360.0 * scale)
         .max_height(430.0 * scale)
         .open(&mut open)
         .show(ctx, |ui| {
-            ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
-                ui.set_width(ui.available_width());
+            simple_window_layout(ui, self.id, |ui| {
+                ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
+
                 egui::ScrollArea::vertical()
                     .id_salt(self.id.with("free_camera_settings_scroll"))
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
-                        ui.set_width(ui.available_width());
                         egui::Frame::NONE
-                        .inner_margin(egui::Margin::symmetric(4, 0))
+                        .inner_margin(egui::Margin::symmetric(8, 0))
                         .show(ui, |ui| {
                             egui::Grid::new(self.id.with("free_camera_settings_grid"))
                             .striped(true)
                             .num_columns(2)
-                            .spacing([12.0 * scale, 4.0 * scale])
+                            .spacing([40.0 * scale, 4.0 * scale])
                             .show(ui, |ui| {
-                                let cfg = &mut self.config.free_camera;
+                                let cfg = &mut self.config.windows.free_camera;
 
-                                ui.strong(t!("free_camera.section_general"));
-                                ui.label("");
-                                ui.end_row();
-
-                                ui.label(t!("config_editor.free_camera"));
-                                ui.checkbox(&mut cfg.enabled, "");
+                                ui.vertical(|ui| {
+                                    ui.heading(t!("free_camera.section_general"));
+                                    ui.separator();
+                                });
                                 ui.end_row();
 
                                 ui.label(t!("free_camera.remove_camera_effects"));
@@ -3756,12 +5678,9 @@ impl Window for FreeCameraSettingsWindow {
                                 ui.add(egui::DragValue::new(&mut cfg.look_step).speed(0.05).range(0.001..=30.0));
                                 ui.end_row();
 
-                                #[cfg(target_os = "windows")]
-                                {
-                                    ui.label(t!("free_camera.mouse_speed"));
-                                    ui.add(egui::DragValue::new(&mut cfg.mouse_speed).speed(1.0).range(1.0..=1000.0));
-                                    ui.end_row();
-                                }
+                                ui.label(t!("free_camera.mouse_speed"));
+                                ui.add(egui::DragValue::new(&mut cfg.mouse_speed).speed(1.0).range(1.0..=1000.0));
+                                ui.end_row();
 
                                 ui.label(t!("free_camera.live_fov"));
                                 ui.add(egui::DragValue::new(&mut cfg.live_fov).speed(0.5).range(1.0..=120.0));
@@ -3783,8 +5702,15 @@ impl Window for FreeCameraSettingsWindow {
                                 ui.add(egui::DragValue::new(&mut cfg.gamepad_look_speed).speed(0.05).range(0.1..=10.0));
                                 ui.end_row();
 
-                                ui.strong(t!("free_camera.section_live"));
-                                ui.label("");
+                                ui.vertical(|ui| {
+                                    ui.add_space(8.0 * scale);
+                                    ui.heading(t!("free_camera.section_live"));
+                                    ui.separator();
+                                });
+                                ui.end_row();
+
+                                ui.label(t!("free_camera.live_remove_screen_effects"));
+                                ui.checkbox(&mut cfg.live_remove_screen_effects, "");
                                 ui.end_row();
 
                                 ui.label(t!("free_camera.live_disable_character_teleport"));
@@ -3823,83 +5749,89 @@ impl Window for FreeCameraSettingsWindow {
                                 ui.add(egui::DragValue::new(&mut cfg.live_follow_smooth_lookat_step).speed(0.01).range(0.02..=1.0));
                                 ui.end_row();
 
-                                ui.strong(t!("free_camera.section_race"));
-                                ui.label("");
+                                ui.vertical(|ui| {
+                                    ui.add_space(8.0 * scale);
+                                    ui.heading(t!("free_camera.section_race"));
+                                    ui.separator();
+                                });
                                 ui.end_row();
 
                                 ui.label(t!("free_camera.race_target_index"));
                                 ui.add(egui::DragValue::new(&mut cfg.race_target_index).speed(1.0).range(-1..=17));
                                 ui.end_row();
 
-                                #[cfg(target_os = "windows")]
-                                {
-                                    ui.strong(t!("free_camera.section_keybinds"));
-                                    ui.label("");
-                                    ui.end_row();
+                                ui.vertical(|ui| {
+                                    ui.add_space(8.0 * scale);
+                                    ui.heading(t!("free_camera.section_keybinds"));
+                                    ui.separator();
+                                });
+                                ui.end_row();
 
-                                    macro_rules! keybind_row {
-                                        ($field:ident, $key:literal) => {{
-                                            let setter: fn(&mut free_camera::FreeCameraKeybinds, u16) =
-                                                |keybinds, raw| keybinds.$field = raw;
-                                            Self::keybind_row(
-                                                ui,
-                                                t!($key),
-                                                cfg.keybinds.$field,
-                                                setter,
-                                            );
-                                        }};
-                                    }
-
-                                    keybind_row!(move_forward, "free_camera.key_move_forward");
-                                    keybind_row!(move_back, "free_camera.key_move_back");
-                                    keybind_row!(move_left, "free_camera.key_move_left");
-                                    keybind_row!(move_right, "free_camera.key_move_right");
-                                    keybind_row!(move_down, "free_camera.key_move_down");
-                                    keybind_row!(move_up, "free_camera.key_move_up");
-                                    keybind_row!(look_up, "free_camera.key_look_up");
-                                    keybind_row!(look_down, "free_camera.key_look_down");
-                                    keybind_row!(look_left, "free_camera.key_look_left");
-                                    keybind_row!(look_right, "free_camera.key_look_right");
-                                    keybind_row!(fov_increase, "free_camera.key_fov_increase");
-                                    keybind_row!(fov_decrease, "free_camera.key_fov_decrease");
-                                    keybind_row!(follow_offset_up, "free_camera.key_follow_offset_up");
-                                    keybind_row!(follow_offset_down, "free_camera.key_follow_offset_down");
-                                    keybind_row!(follow_offset_left, "free_camera.key_follow_offset_left");
-                                    keybind_row!(follow_offset_right, "free_camera.key_follow_offset_right");
-                                    keybind_row!(target_previous, "free_camera.key_target_previous");
-                                    keybind_row!(target_next, "free_camera.key_target_next");
-                                    keybind_row!(part_previous, "free_camera.key_part_previous");
-                                    keybind_row!(part_next, "free_camera.key_part_next");
-                                    keybind_row!(reset, "free_camera.key_reset");
-                                    keybind_row!(cycle_mode, "free_camera.key_cycle_mode");
-                                    keybind_row!(reverse, "free_camera.key_reverse");
+                                macro_rules! keybind_row {
+                                    ($field:ident, $key:literal) => {{
+                                        let setter: fn(&mut free_camera::FreeCameraKeybinds, u16) =
+                                            |keybinds, raw| keybinds.$field = raw;
+                                        Self::keybind_row(
+                                            ui,
+                                            t!($key),
+                                            cfg.keybinds.$field,
+                                            setter,
+                                        );
+                                    }};
                                 }
+
+                                keybind_row!(move_forward, "free_camera.key_move_forward");
+                                keybind_row!(move_back, "free_camera.key_move_back");
+                                keybind_row!(move_left, "free_camera.key_move_left");
+                                keybind_row!(move_right, "free_camera.key_move_right");
+                                keybind_row!(move_down, "free_camera.key_move_down");
+                                keybind_row!(move_up, "free_camera.key_move_up");
+                                keybind_row!(look_up, "free_camera.key_look_up");
+                                keybind_row!(look_down, "free_camera.key_look_down");
+                                keybind_row!(look_left, "free_camera.key_look_left");
+                                keybind_row!(look_right, "free_camera.key_look_right");
+                                keybind_row!(fov_increase, "free_camera.key_fov_increase");
+                                keybind_row!(fov_decrease, "free_camera.key_fov_decrease");
+                                keybind_row!(follow_offset_up, "free_camera.key_follow_offset_up");
+                                keybind_row!(follow_offset_down, "free_camera.key_follow_offset_down");
+                                keybind_row!(follow_offset_left, "free_camera.key_follow_offset_left");
+                                keybind_row!(follow_offset_right, "free_camera.key_follow_offset_right");
+                                keybind_row!(target_previous, "free_camera.key_target_previous");
+                                keybind_row!(target_next, "free_camera.key_target_next");
+                                keybind_row!(part_previous, "free_camera.key_part_previous");
+                                keybind_row!(part_next, "free_camera.key_part_next");
+                                keybind_row!(reset, "free_camera.key_reset");
+                                keybind_row!(cycle_mode, "free_camera.key_cycle_mode");
+                                keybind_row!(reverse, "free_camera.key_reverse");
+
+                                ui.horizontal(|ui| ui.add_space(130.0 * scale));
+                                ui.horizontal(|ui| ui.add_space(130.0 * scale));
+                                ui.end_row();
                             });
                         });
                     });
-
-                ui.separator();
-
-                ui.with_layout(egui::Layout::left_to_right(egui::Align::Min), |ui| {
-                    if ui.button(t!("config_editor.restore_defaults")).clicked() {
-                        reset_clicked = true;
-                    }
-
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
-                        if ui.button(t!("cancel")).clicked() {
-                            open2 = false;
+                }, |ui| {
+                    ui.with_layout(egui::Layout::left_to_right(egui::Align::Min), |ui| {
+                        if ui.button(t!("config_editor.restore_defaults")).clicked() {
+                            reset_clicked = true;
                         }
-                        if ui.button(t!("save")).clicked() {
-                            save_clicked = true;
-                            open2 = false;
-                        }
+
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
+                            if ui.button(t!("cancel")).clicked() {
+                                open2 = false;
+                            }
+                            if ui.button(t!("save")).clicked() {
+                                save_clicked = true;
+                                open2 = false;
+                            }
+                        });
                     });
                 });
-            });
-        });
+            }
+        );
 
         if reset_clicked {
-            self.config.free_camera = free_camera::FreeCameraConfig::default();
+            self.config.windows.free_camera = free_camera::FreeCameraConfig::default();
         }
 
         if save_clicked {
@@ -4383,12 +6315,12 @@ impl Window for ExcludesEditorWindow {
                         let mut to_remove: Option<usize> = None;
                         let mut to_edit: Option<usize> = None;
 
+                        let search_lower = self.search_term.to_lowercase();
                         let display_items: Vec<(usize, String)> = self.excludes
                             .iter()
                             .enumerate()
                             .filter(|(_, exclude)| {
-                                self.search_term.is_empty()
-                                    || exclude.to_lowercase().contains(&self.search_term.to_lowercase())
+                                search_lower.is_empty() || exclude.to_lowercase().contains(&search_lower)
                             })
                             .map(|(i, exclude)| (i, exclude.clone()))
                             .collect();
@@ -4593,7 +6525,7 @@ impl Window for ChangeTranslationRepoWindow {
         let mut open2 = true;
 
         let hachimi = Hachimi::instance();
-        let manager = hachimi.tl_repo_manager.lock().unwrap().clone();
+        let manager = hachimi.tl_repo_manager.lock().unwrap();
         let current_repo_id = hachimi.config.load().selected_tl_repo_id;
         let has_repos = !manager.repos.is_empty();
 
@@ -5349,6 +7281,8 @@ pub struct SimpleMarkdownDialog {
     content: String,
     id: egui::Id,
     cache: egui_commonmark::CommonMarkCache,
+    default_height: Option<f32>,
+    max_height: Option<f32>,
 }
 
 impl SimpleMarkdownDialog {
@@ -5358,6 +7292,19 @@ impl SimpleMarkdownDialog {
             content: content.to_owned(),
             id: random_id(),
             cache: egui_commonmark::CommonMarkCache::default(),
+            default_height: None,
+            max_height: None,
+        }
+    }
+
+    pub fn new_with_height(title: &str, content: &str, default_height: f32, max_height: f32) -> SimpleMarkdownDialog {
+        SimpleMarkdownDialog {
+            title: title.to_owned(),
+            content: content.to_owned(),
+            id: random_id(),
+            cache: egui_commonmark::CommonMarkCache::default(),
+            default_height: Some(default_height),
+            max_height: Some(max_height),
         }
     }
 }
@@ -5367,7 +7314,17 @@ impl Window for SimpleMarkdownDialog {
         let mut open = true;
         let mut open2 = true;
 
-        new_window(ctx, self.id, &self.title)
+        let scale = get_scale(ctx);
+
+        let mut window = new_window(ctx, self.id, &self.title);
+        if let Some(h) = self.default_height {
+            window = window.default_height(h * scale);
+        }
+        if let Some(h) = self.max_height {
+            window = window.max_height(h * scale);
+        }
+
+        window
         .open(&mut open)
         .show(ctx, |ui| {
             egui::TopBottomPanel::bottom(self.id.with("bottom_panel"))
@@ -5489,6 +7446,8 @@ impl Window for LicenseWindow {
                 ui.group(|ui| {
                     ui.label(t!("license.font_inter"));
                     ui.label(t!("license.font_font_awesome"));
+                    ui.label(t!("license.font_m_plus_1"));
+                    ui.label(t!("license.font_pretendard"));
                 });
 
                 ui.add_space(4.0);

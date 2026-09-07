@@ -1,23 +1,19 @@
 use crate::il2cpp::{
-    symbols::{get_class, get_method_addr},
+    symbols::get_method_addr,
     types::*,
 };
 
 static mut GET_GATE_NO_ADDR: usize = 0;
+impl_addr_wrapper_fn!(get_GateNo, GET_GATE_NO_ADDR, i32, this: *mut Il2CppObject);
 
-pub fn get_GateNo(this: *mut Il2CppObject) -> Option<i32> {
-    if unsafe { GET_GATE_NO_ADDR } == 0 {
-        return None;
-    }
-    let func: extern "C" fn(*mut Il2CppObject) -> i32 =
-        unsafe { std::mem::transmute(GET_GATE_NO_ADDR) };
-    Some(func(this))
-}
+static mut GET_CHARA_NAME_ADDR: usize = 0;
+impl_addr_wrapper_fn!(get_charaName, GET_CHARA_NAME_ADDR, *mut Il2CppString, this: *mut Il2CppObject);
 
 pub fn init(umamusume: *const Il2CppImage) {
-    if let Ok(horse_data) = get_class(umamusume, c"Gallop", c"HorseData") {
-        unsafe {
-            GET_GATE_NO_ADDR = get_method_addr(horse_data, c"get_GateNo", 0);
-        }
+    get_class_or_return!(umamusume, Gallop, HorseData);
+
+    unsafe {
+        GET_GATE_NO_ADDR = get_method_addr(HorseData, c"get_GateNo", 0);
+        GET_CHARA_NAME_ADDR = get_method_addr(HorseData, c"get_charaName", 0);
     }
 }

@@ -14,17 +14,19 @@ pub mod Component;
 pub mod UnityAction;
 #[cfg(target_os = "android")]
 pub mod TouchScreenKeyboard;
+
 #[cfg(target_os = "android")]
-pub mod TouchScreenKeyboardType;
+#[path = "TouchScreenKeyboardType.rs"]
+mod touch_screen_keyboard_type;
+#[cfg(target_os = "android")]
+pub use touch_screen_keyboard_type::TouchScreenKeyboardType;
+
 pub mod RectTransform;
 pub mod Transform;
 pub mod RectOffset;
-
-#[cfg(target_os = "windows")]
 pub mod Camera;
 #[cfg(target_os = "windows")]
 pub mod QualitySettings;
-#[cfg(target_os = "windows")]
 pub mod Screen;
 pub mod SceneManager;
 pub mod Scene;
@@ -59,16 +61,16 @@ pub fn init() {
     RectOffset::init(image);
     SceneManager::init(image);
     Scene::init(image);
+    Camera::init(image);
+    Screen::init(image);
+
     #[cfg(target_os = "android")]
     {
         TouchScreenKeyboard::init(image);
-        TouchScreenKeyboardType::init(image);
     }
 
     #[cfg(target_os = "windows")]
     {
-        Camera::init(image);
         QualitySettings::init(image);
-        Screen::init(image);
     }
 }
