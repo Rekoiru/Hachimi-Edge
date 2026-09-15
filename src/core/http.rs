@@ -22,7 +22,7 @@ use serde::de::DeserializeOwned;
 
 use super::{Error, Hachimi};
 
-const TIMEOUT: Duration = Duration::from_secs(15);
+const TIMEOUT: Duration = Duration::from_secs(30);
 
 pub struct AsyncRequest<T: Send + Sync> {
     request: Mutex<Option<http::Request<ureq::Body>>>,
@@ -40,7 +40,7 @@ pub fn ureq_config_with_timeout(timeout: Option<Duration>) -> ureq::config::Conf
 
     ureq::config::Config::builder()
         .ip_family(if Hachimi::instance().config.load().ipv4_only { Ipv4Only } else { Any })
-        .timeout_global(timeout)
+        .timeout_connect(timeout)
         .build()
 }
 
