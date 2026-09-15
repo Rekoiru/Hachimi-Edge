@@ -149,7 +149,7 @@ extern "C" fn PopulateWithErrors(
     let path = get_hierarchy_path_with_fallback(context, this);
 
     // optimized layout bypass block
-    if Hachimi::instance().game.region == Region::Japan && path.contains("PartsCharaMessage") {
+    if Hachimi::instance().game.region == Region::Japan && path.contains("CharaMessage") {
         settings.horizontalOverflow = 0;
         settings.verticalOverflow = 0;
         settings.resizeTextMaxSize = 32;

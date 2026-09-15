@@ -155,7 +155,7 @@ impl Parser {
                             output.extend(res.bytes());
                         }
                         else {
-                            warn!("Filter evaluation failed in '{}' (at pos {})", input, i);
+                            warn!("Filter evaluation failed in '{}' (at pos {})", input.replace('\n', "\\n"), i);
                         }
 
                         tokens.clear();

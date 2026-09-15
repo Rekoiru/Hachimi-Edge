@@ -1,0 +1,308 @@
+hachimi: "Hachimi Edge"
+
+windows:
+  menu_open_key: "<"
+
+android:
+  menu_open_key: "불륨키 위 + 불륨키 아래\n\uf25a 또는 왼쪽 삼회 연속 터치"
+
+splash_sub: "\uf015 메뉴를 열려면 %{open_key_str} 을 누루세요."
+loading_label: "로딩중..."
+search_filter: "검색"
+open: "열기"
+cancel: "취소"
+save: "확인"
+done: "완료"
+next: "다음"
+previous: "이전"
+yes: "네"
+no: "아니요"
+ok: "확인"
+retry: "재시도"
+default: "기본값"
+off: "끄기"
+on: "켜기"
+enable: "켜짐"
+info: "정보"
+warning: "경고"
+confirm_dialog_title: "확인"
+soft_restart_confirm_content: "게임을 재시작 할까요?타이틀 화면으로 돌아갑니다.프리징이 걸린경우 이외에는 사용하지 않는것을 권장합니다."
+in_game_browser_confirm_content: "인게임 브라우져를 열까요?"
+browser_dialog_title: "브라우져"
+
+menu:
+  check_for_updates: "\uf0aa 업데이트 확인"
+  fps_text: "초당 프레임: %{fps}"
+  close_menu: "\uf00d 메뉴 닫기"
+  stats_heading: "\uf022 상황"
+  localize_dict_entries: "번역 파일(localize) 편집기 열기: %{count}"
+  hashed_dict_entries: "번역 파일(hash) 편집기 열기: %{count}"
+  config_heading: "\uf0ad 고급 설정"
+  open_config_editor: "\uf040 고급 설정 편집기 열기"
+  reload_config: "\uf021 고급 설정 재로드"
+  open_first_time_setup: "\uf135 초회 설정 열기"
+  graphics_heading: "\uf03e 품질"
+  fps_label: "초당 프레임"
+  vsync_label: "VSync"
+  stay_on_top: "Stay on top"
+  translation_heading: "\uf02d 번역"
+  reload_localized_data: "\uf021 번역 파일(localized) 재로드"
+  tl_check_for_updates: "\uf0aa 번역 업데이트 확인"
+  tl_check_for_updates_pedantic: "\uf0aa 번역 업데이트 확인 (pedantic)"
+  addon_check_for_updates_pedantic: "\uf0aa Repair translations (addons)"
+  dump_localize_dict: "번역 파일(localized) 덤프 만들기"
+  danger_zone_heading: "\uf071 개발자 웁션"
+  danger_zone_warning: "게임에 문제를 일으키거나 의도하지 않은 일이 일어날수 있습니다. 주의하세요!"
+  soft_restart: "\uf021 게임 재시작(타이틀 화면으로)"
+  open_in_game_browser: "\uf0ac 인게임 브라우져 열기"
+  toggle_game_ui: "\uf06e 게임 ui 크기"
+  discord_rpc: "Discord RPC"
+
+notification:
+  saved_localize_dump: "localize_dump.json 에 저장됨"
+  config_reloaded: "고급 설정 재로드됨."
+  config_saved: "고급 설정 저장됨."
+  config_error: "고급 설정이 문제를 일으키거나 게임과 충돌했습니다. 기본값으로 되돌립니다..."
+  localized_data_reloaded: "번역 파일(localized) 재로드됨."
+  checking_for_tl_updates: "번역 업데이트 확인..."
+  no_tl_updates: "최신 버전을 사용하고 있습니다."
+  update_failed: "업데이트 실패: %{reason}"
+  update_completed: "업데이트 완료."
+  mod_update_completed: "번역 애드온 업데이트 완료."
+  errors_during_update: "%{count}개의 오류가 발생했습니다. 자세한 정보를 확인하세요."
+  checking_for_updates: "업데이트를 확인합니다..."
+  no_updates: "최신 버전을 사용중입니다."
+  press_to_set_menu_key: "메뉴 열기 단축키를 설정하려면 게임 창에서 키를 누르세요."
+  menu_open_key_set: "메뉴 열기 단축키가 %{key}(으)로 설정되었습니다."
+  ipc_softreset_exec: "IPC soft-reset 명령이 실행되었습니다."
+  asset_mismatch: "일부 리소스들이 업데이트로 인해 비활성화되었습니다. 자세한 내용은 로그를 확인하세요."
+
+first_time_setup:
+  title: "초회 설치"
+  welcome_heading: "안녕하세요"
+  welcome_content: >-
+    하치미 패치가 성공적으로 적용되었습니다! 초회 설정을 도와드리겠습니다.
+    만약 번역 패치를 위해 적용하신것이 아니라면 건너뛰셔도 무방합니다.
+
+
+    DISCLAIMER: 하치미는 커뮤니티 소프트웨어 입니다. 모든 번역은 개별 프로젝트 산하입니다.
+    주식회사 cygames,주식회사 kakaogames와 관계가 없습니다.운영정책을 위반하는 용도가 아닙니다. 계속하시면,이 패치를 사용하시는것에 대한 책임은 본인에게 있음에 동의하는것으로 간주됩니다.
+  translation_repo_heading: "번역 파일 배포"
+  select_translation_repo: "선택하세요:"
+  no_compatible_repo: "현재 버전과 호환되는 번역 파일 배포가 없습니다."
+  skip_translation: "번역 설정 건너뛰기."
+  common_settings_heading: "보편적으로 찾는 설정들"
+  common_settings_content: >-
+    아래는 보편적으로 수정하기 원해하는 경향이 있는 설정들입니다.
+    상술한 설정들은 언제든지 고급 설정에서 변경하실수 있습니다.
+  complete_heading: "완료!"
+  complete_content: >-
+    번역파일 업데이트를 확인하시는 것을 권장합니다.
+
+about:
+  title: "머리글"
+  copyright: "© 2024-%{year} LeadRDRK, kairusds, 이외 커뮤니티 기여자들"
+  view_license: "이용 허가 보기"
+  open_website: "누리 소통망 열기"
+  view_source_code: "코드 보기"
+
+license:
+  title: "이용 허가"
+  gpl_v3_only_notice: "GPL-3.0-only"
+  ofl_fonts_header: "This software bundles the following fonts under the SIL Open Font License 1.1:"
+  font_inter: "Inter: Copyright 2020 The Inter Project Authors (https://github.com/rsms/inter)"
+  font_font_awesome: "Font Awesome Version 4.7.0: Copyright Dave Gandy (https://fontawesome.com) 2016. All rights reserved."
+  ofl_notice: "SIL OFL 1.1 License Text"
+  font_alibaba_header: "Alibaba PuHuiTi 3.0"
+  font_alibaba_body: "Copyright (c) 2020-2023 Alibaba (China) Co., Ltd. All rights reserved."
+
+tl_updater:
+  title: "업데이트 중..."
+  warning: "업데이트 하는 동안에는 번역이 비활성화 됩니다"
+
+config_editor:
+  adjust: "수정"
+  hachimi_settings: "Hachimi 설정"
+  open_settings: "고급 설정 열기"
+  title: "고급 설정"
+  general_tab: "\uf013 일반"
+  graphics_tab: "\uf03e 품질"
+  gameplay_tab: "\uf11b 게임"
+  advanced_tab: "\uf0ad 고급"
+  language: "언어"
+  restore_defaults: "기본값으로 되돌리기"
+  disable_overlay: "그래픽 사용자 인터페이스 비활성화"
+  disable_overlay_warning: >-
+    이는 흔히 gui라고 칭해지는 그래픽 사용자 인터페이스를 비활성화 합니다,
+    즉 이후에는 클라이언트를 뜯어 직접 config.json을 txt편집기를 이용해 편집하지 않는 이상 고급 설정을 바꾸실수 없습니다.
+  ipv4_only: "IP6 비활성"
+  meta_index_url: "번역 파일 배포 목록 출처"
+  debug_mode: "오류 수정 모드"
+  text_debug: "텍스트 디버그 모드"
+  text_log: "텍스트 로깅"
+  text_property_dump: "UI 속성 덤프"
+  text_localize_dump: "로컬라이즈 데이터 덤프"
+  text_position_debug: "위치 오프셋 로깅"
+  text_path_debug: "UI 경로 로깅"
+  enable_file_logging: "로그 파일 기록 키기"
+  localized_data_dir: "번역 데이터 폴더"
+  apply_atlas_workaround: "tl workaround 키기"
+  disable_outdated_asset_notif: "최신 버전이 아닌 리소스 알림 끄기"
+  translator_mode: "번역 모드"
+  skip_first_time_setup: "초회 설정 키기"
+  lazy_translation_updates: "느린 번역 업데이트"
+  disable_auto_update_check: "자동 업데이트 끄기"
+  disable_mod_downloads: "번역 애드온 다운로드 끄기"
+  disable_translations: "번역 끄기"
+  enable_ipc: "IPC 키기"
+  ipc_listen_all: "IPC 항상 허용"
+  auto_translate_stories: "스토리 자동번역"
+  auto_tl_warning: >-
+    Note: 이 설정은 스스로 작동하지 못합니다.
+    sugoi toolkit url을 config.json에 입력하세요, 
+    이 작업 없이는 추가적인 번역은 일어나지 않고 오히려 게임 성능만 저하시킬 것입니다.
+    서버가 없다면 끈 상태를 유지해 주세요.
+  auto_translate_ui: "UI 자동 번역 (UI가 깨질수도 있음)"
+  target_fps: "초당 프레임"
+  virtual_resolution_multiplier: "Virtual resolution multiplier"
+  ui_scale: "UI 크기"
+  gui_scale: "Overlay scale"
+  gui_landscape_ratio: "Landscape overlay scale ratio"
+  ui_animation_scale: "UI animation scale"
+  graphics_quality: "Graphics quality"
+  vsync: "VSync"
+  auto_full_screen: "Auto full screen"
+  full_screen_mode: "Full screen mode"
+  full_screen_mode_exclusive: "Exclusive"
+  full_screen_mode_borderless: "Borderless"
+  block_minimize_in_full_screen: "Block minimize in full screen"
+  resolution_scaling: "Resolution scaling"
+  resolution_scaling_default: "Default (1080p)"
+  resolution_scaling_ssize: "Scale to screen size"
+  resolution_scaling_wsize: "Scale to window size"
+  window_always_on_top: "Window always on top"
+  story_choice_auto_select_delay: "스토리 자동 진행 지연"
+  story_text_speed_multiplier: "스토리 배속"
+  force_allow_dynamic_camera: "우마무스메 1인칭 시점 웁션 강제 활성화"
+  free_camera: "Free Camera"
+  live_theater_allow_same_chara: "라이브 다시보기에서 동일한 우마무스메 두명이상 배치 강제 활성화"
+  physics_update_mode: "Physics update mode"
+  disable_skill_name_translation: "스킬 이름 번역 끄기"
+  hide_ingame_ui_hotkey: "Hide ingame UI hotkey"
+  hide_ingame_ui_hotkey_info: >-
+    This option allows a shortcut key to toggle the ingame UI.
+    For Android, you can triple tap the top right of the screen.
+    For PC/Android with keyboard, it's the Insert key by default and can be configured in the gui or config.
+  discord_rpc: "Discord RPC"
+  enable_smtc: "Enable Windows Media Controls"
+  menu_open_key: "Open menu hotkey"
+  menu_open_key_set: "Press to set"
+  msaa: "MSAA"
+  render_scale: "Render Scale"
+  aniso_level: "Anisotropic Filtering"
+  live_vocals_swap: "Live Vocals Swap"
+  live_vocals_swap_character_n: "Character %{index}"
+  skill_info_dialog: "Custom skill info dialog"
+  homescreen_bgseason: "Homescreen Background Season"
+  shadow_resolution: "Shadow Resolution"
+
+theme_editor:
+  title: "GUI Theme Editor"
+  ui_accent_color: "Accent Color"
+  ui_window_fill: "Window Background Color"
+  ui_panel_fill: "Panel Background Color"
+  ui_extreme_bg_color: "Input Background"
+  ui_text_color: "Text Color"
+  ui_window_rounding: "Rounded Corners"
+
+tl_update_dialog:
+  title: "업데이트 가능"
+  title_mod: "번역 애드온 업데이트 가능"
+  content: "새 업데이트가 있습니다 (%{size}). 다운로드 하시겠습니까?"
+  content_mod: "번역 애드온 업데이트가 있습니다 (%{size}). 다운로드 하시겠습니까?"
+  content_zip_warning: "새 업데이트가 있습니다 (%{changed_size}). 전체 파일을 내려받습니다. (%{download_size}) "
+
+update_prompt_dialog:
+  title: "업데이트 가능"
+  content: |
+    하치미 패치의 새 업데이트가 있습니다 (%{version}). 설치할까요?
+    업데이트 적용을 위해 재시작합니다.
+  android_content: |
+    하치미 패치의 새 업데이트가 있습니다 (%{version}).
+
+    UmaPatcher Edge에서 다시 패치하세요.
+
+    Note: apk파일은 이미 있는것을 사용하시면 됩니다!
+
+updating_dialog:
+  title: "업데이트중"
+  content: "다운로드중.잠시후 게임이 재시작 됩니다..."
+
+steam_overlay_conflict_dialog:
+  title: "Notice"
+  content: >-
+    구매를 취소하세요.이후에 하치미 패치가 비활성화 된 상태로 게임이 재시작 될것입니다.이후 결제를 진행해 주세요.
+
+key_names:
+  left: "Left arrow"
+  right: "Right arrow"
+  up: "Up arrow"
+  down: "Down arrow"
+  insert: "Insert"
+  delete: "Delete"
+  home: "Home"
+  end: "End"
+  page_up: "Page Up"
+  page_down: "Page Down"
+  escape: "Escape"
+  tab: "Tab"
+  enter: "Enter"
+  space: "Space"
+  backspace: "Backspace"
+  clear: "Clear"
+  pause: "Pause"
+  caps_lock: "Caps Lock"
+  scroll_lock: "Scroll Lock"
+  num_lock: "Num Lock"
+  print_screen: "Print Screen"
+  left_win: "Left Windows"
+  right_win: "Right Windows"
+  apps: "Menu"
+  alt: "Alt"
+  ctrl: "Ctrl"
+  shift: "Shift"
+  dpad_up: "D-Pad Up"
+  dpad_down: "D-Pad Down"
+  dpad_left: "D-Pad Left"
+  dpad_right: "D-Pad Right"
+  volume_up: "Volume Up"
+  volume_down: "Volume Down"
+  copy: "Copy"
+  cut: "Cut"
+  paste: "Paste"
+  semicolon: ";"
+  comma: ","
+  backslash: "\\"
+  slash: "/"
+  left_bracket: "["
+  right_bracket: "]"
+  grave: "`"
+  minus: "-"
+  period: "."
+  plus: "+"
+  equals: "="
+  numpad_0: "Numpad 0"
+  numpad_1: "Numpad 1"
+  numpad_2: "Numpad 2"
+  numpad_3: "Numpad 3"
+  numpad_4: "Numpad 4"
+  numpad_5: "Numpad 5"
+  numpad_6: "Numpad 6"
+  numpad_7: "Numpad 7"
+  numpad_8: "Numpad 8"
+  numpad_9: "Numpad 9"
+  numpad_add: "Numpad +"
+  numpad_subtract: "Numpad -"
+  numpad_multiply: "Numpad *"
+  numpad_divide: "Numpad /"
+  numpad_decimal: "Numpad ."

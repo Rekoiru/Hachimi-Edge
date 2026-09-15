@@ -4,7 +4,7 @@ windows:
   menu_open_key: "Kanang arrow"
 
 android:
-  menu_open_key: "Vol Up + Vol Down\n\uf25a o i-tap nang tatlong beses ang top-left ng screen"
+  menu_open_key: "Vol Up + Vol Down\n\uf25a o i-tap nang tatlong beses\nang kaliwang itaas na bahagi ng screen"
 
 splash_sub: "\uf015 Pindutin ang %{open_key_str} para buksan ang menu."
 loading_label: "Naglo-load..."
@@ -22,7 +22,7 @@ enable: "I-enable"
 info: "Impormasyon"
 warning: "Babala"
 confirm_dialog_title: "Kumpirmahin"
-soft_restart_confirm_content: "Gusto mo ba talaga i-soft restart ang laro?"
+soft_restart_confirm_content: "Gusto mo bang i-soft restart ang laro?"
 in_game_browser_confirm_content: "Gusto mo bang buksan ang in-game na browser?"
 
 menu:
@@ -37,7 +37,8 @@ menu:
   stay_on_top: "Manatili sa itaas"
   reload_localized_data: "\uf021 I-reload ang localized data"
   tl_check_for_updates: "\uf0aa Tignan kung may update sa translations"
-  tl_check_for_updates_pedantic: "\uf0aa Tignan kung may update sa translations (pedantic)"
+  tl_check_for_updates_pedantic: "\uf0aa Ayusin ang translations"
+  addon_check_for_updates_pedantic: "\uf0aa Ayusin ang mga addon translations"
   dump_localize_dict: "I-dump ang localize dict"
   danger_zone_heading: "\uf071 Danger Zone"
   danger_zone_warning: "Maaaring magkaroon ng hindi inaasahang epekto sa laro ang mga opsyong ito. Gamitin nang may pag-iingat!"
@@ -74,7 +75,7 @@ first_time_setup:
 
 
     DISCLAIMER: Isang proyekto na pinangungunahan ng komunidad ang Hachimi. Ginawa
-    ng mga iba't ibang mga kontribyutor ang mga translator. Hindi ito binuo o ineendorso
+    ng mga iba't ibang mga kontribyutor ang mga translations. Hindi ito binuo o ineendorso
     ng Cygames, Inc., at lumalabag ito sa Mga Tuntunin sa Serbisyo. Sa pamamagitan ng pagpatuloy,
     tinatanggap mo na gagamitin mo ito sa iyong sariling peligro.
   translation_repo_heading: "Repo ng translations"
@@ -115,8 +116,8 @@ config_editor:
     Idi-disable nito ang Hachimi overlay pagkatapos mo i-restart ang laro.
     na nangangahulugan na HINDI mo maa-access ang Config Editor pagkatpos nito.
     Kapag hindi ito sinasadya, isara ang dialog na ito at I-DISABLE ang opsyon.
-  ipv4_only: "IPv4 na ureq lamang"
-  meta_index_url: "URL ng Translation Meta"
+  ipv4_only: "I-disable ang IPv6 sa Updater"
+  meta_index_url: "URL ng Translation Metadata"
   enable_file_logging: "I-enable ang logging sa file"
   apply_atlas_workaround: "I-apply ang TL atlas workaround"
   skip_first_time_setup: "Laktawan ang first-time setup"
@@ -136,7 +137,7 @@ config_editor:
   ui_scale: "Laki ng UI"
   gui_scale: "Laki ng Overlay"
   gui_landscape_ratio: "Overlay scale ratio sa landscape"
-  ui_animation_scale: "Biliis ng UI animation"
+  ui_animation_scale: "Bilis ng UI animation"
   graphics_quality: "Kalidad ng graphics"
   full_screen_mode_exclusive: "Eksklusibo"
   block_minimize_in_full_screen: "I-block ang pag-minimize sa full screen"
@@ -151,29 +152,29 @@ config_editor:
   hide_ingame_ui_hotkey: "I-enable ang hotkey ng pagtago ng game UI"
   hide_ingame_ui_hotkey_info: >-
     Pinapayagan ng opsyong ito ang isang shortcut key sa pag-toggle ng game UI.
-    Para sa Android, kailangan mong i-double tap ang Volume Up key, o i-triple tap ang top-right ng screen.
+    Para sa Android, maaari mong i-triple tap ang top-right ng screen.
     Para sa PC/Android na may keyboard, ito ang Insert key at maaaring i-configure sa GUI o config.
   discord_rpc: "Discord RPC"
   menu_open_key: "Hotkey ng pagbukas ng menu"
   menu_open_key_set: "Itakda"
-  live_vocals_swap: "Pagpalit ng Vocals sa Live"
+  live_vocals_swap: "Pagpalit ng Vocals sa Live Theater"
   skill_info_dialog: "Custom na dialog ng skill info"
   homescreen_bgseason: "Panahon ng Homescreen Background"
   shadow_resolution: "Resolution ng Shadows"
 
 theme_editor:
-  title: "Editor ng GUI Theme"
+  title: "Editor ng Tema sa GUI"
   ui_accent_color: "Kulay ng Accent"
   ui_window_fill: "Kulay ng Window Background"
   ui_panel_fill: "Kulay ng Panel Background"
-  ui_extreme_bg_color: "Background Input"
+  ui_extreme_bg_color: "Background ng Input"
   ui_text_color: "Kulay ng Text"
   ui_window_rounding: "Mga Rounded Corner"
 
 tl_update_dialog:
   title: "May bagong update"
-  content: "May bagong update sa translations (%{size}). Gusto mo ba ito i-download?"
-  content_zip_warning: "May bagong update sa translations (%{changed_size}). Ida-download ng update na ito ang buong archive (%{download_size}) sa halip."
+  content: "May bagong update sa translations (%{size}). Gusto mo ba itong i-download?"
+  content_zip_warning: "May bagong update sa translations (%{changed_size}). Ida-download ng update na ito ang buong archive (%{download_size}). Gusto mo ba itong i-download?"
 
 update_prompt_dialog:
   title: "May bagong update"

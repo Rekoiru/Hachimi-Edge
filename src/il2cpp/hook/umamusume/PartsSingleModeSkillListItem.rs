@@ -2,9 +2,9 @@ use crate::{
     core::{Hachimi, game::Region, utils::str_visual_len},
     il2cpp::{ext::{Il2CppStringExt, StringExt}, hook::{UnityEngine_CoreModule::{Component, Object, UnityAction}, UnityEngine_UI::Text, UnityEngine_UI::EventSystem}, sql::TextDataQuery, symbols::{create_delegate, get_field_from_name, get_field_object_value, get_method_addr}, types::*}
 };
+use fnv::FnvHashMap;
 use once_cell::sync::Lazy;
 use std::sync::Mutex;
-use fnv::FnvHashMap;
 use super::{ButtonCommon, DialogCommon, DialogManager, MasterDataUtil};
 
 static SKILL_TEXT_CACHE: Lazy<Mutex<FnvHashMap<i32, (String, String)>>> = Lazy::new(|| Mutex::default());
@@ -141,8 +141,7 @@ pub fn init(umamusume: *const Il2CppImage) {
     if Hachimi::instance().game.region == Region::Japan {
         let UpdateItem_addr = get_method_addr(PartsSingleModeSkillListItem, c"UpdateItem", 5);
         new_hook!(UpdateItem_addr, UpdateItemJp);
-    }
-    else {
+    } else {
         let UpdateItem_addr = get_method_addr(PartsSingleModeSkillListItem, c"UpdateItem", 3);
         new_hook!(UpdateItem_addr, UpdateItemOther);
     }
