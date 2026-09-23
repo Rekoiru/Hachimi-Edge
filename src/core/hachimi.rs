@@ -12,8 +12,7 @@ pub const REPO_PATH: &str = "Rekoiru/Hachimi-Edge";
 pub const GITHUB_API: &str = "https://api.github.com/repos";
 pub const CODEBERG_API: &str = "https://codeberg.org/api/v1/repos";
 pub const WEBSITE_URL: &str = "https://hachimi.noccu.art";
-pub const UMAPATCHER_PACKAGE_NAME: &str = "com.leadrdrk.umapatcher.edge";
-pub const UMAPATCHER_INSTALL_URL: &str = "https://github.com/kairusds/UmaPatcher-Edge/releases/latest";
+pub const UMAPATCHER_UPDATER_DEEPLINK: &str = "umapatcher-edge://update-hachimi";
 
 pub static CONFIG_LOAD_ERROR: AtomicBool = AtomicBool::new(false);
 
@@ -517,7 +516,13 @@ pub enum Language {
     BPortuguese,
 
     #[serde(rename = "fil")]
-    Filipino
+    Filipino,
+
+    #[serde(rename = "ko")]
+    Korean,
+
+    #[serde(rename = "ru")]
+    Russian
 }
 
 impl Default for Language {
@@ -537,6 +542,10 @@ impl Default for Language {
             Self::BPortuguese
         } else if locale.starts_with("fil") {
             Self::Filipino
+        } else if locale.starts_with("ko") {
+            Self::Korean
+        } else if locale.starts_with("ru") {
+            Self::Russian
         } else {
             Self::English
         }
@@ -552,7 +561,9 @@ impl Language {
         Self::Indonesian.choice(),
         Self::Spanish.choice(),
         Self::BPortuguese.choice(),
-        Self::Filipino.choice()
+        Self::Filipino.choice(),
+        Self::Korean.choice(),
+        Self::Russian.choice()
     ];
 
     pub fn set_locale(&self) {
@@ -568,7 +579,9 @@ impl Language {
             Language::Indonesian => "id",
             Language::Spanish => "es",
             Language::BPortuguese => "pt-br",
-            Language::Filipino => "fil"
+            Language::Filipino => "fil",
+            Language::Korean => "ko",
+            Language::Russian => "ru"
         }
     }
 
@@ -581,12 +594,22 @@ impl Language {
             Language::Indonesian => "Bahasa Indonesia",
             Language::Spanish => "Español (ES)",
             Language::BPortuguese => "Português (Brasil)",
-            Language::Filipino => "Filipino"
+            Language::Filipino => "Filipino",
+            Language::Korean => "한국어",
+            Language::Russian => "Русский"
         }
     }
 
     pub const fn choice(self) -> (Self, &'static str) {
         (self, self.name())
+    }
+
+    pub fn from_index(index: usize) -> Self {
+        Self::CHOICES.get(index).map(|&(l, _)| l).unwrap_or_default()
+    }
+
+    pub fn to_index(self) -> usize {
+        Self::CHOICES.iter().position(|&(l, _)| l == self).unwrap_or(0)
     }
 }
 
