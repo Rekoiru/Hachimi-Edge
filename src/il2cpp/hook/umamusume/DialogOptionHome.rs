@@ -467,6 +467,33 @@ fn create_option_2toggle(name: &str, title: &str, opt1: &str, opt2: &str, select
         if go.is_null() { return null_mut(); }
         
         Object::set_name(go, name.to_il2cpp_string());
+
+        let tr = (*go).transform();
+        
+        let text_tr = Transform::Find(tr, "Text".to_il2cpp_string());
+        let toggle_group_tr = if text_tr.is_null() {
+            null_mut()
+        } else {
+            Transform::Find(text_tr, "ToggleGroup".to_il2cpp_string())
+        };
+        
+        if toggle_group_tr.is_null() {
+            warn!("create_option_2toggle: ToggleGroup not found");
+        } else {
+            Transform::SetParent(toggle_group_tr, tr, false);
+            RectTransform::set_anchorMin(toggle_group_tr, Vector2_t { x: 0.0, y: 1.0 });
+            RectTransform::set_anchorMax(toggle_group_tr, Vector2_t { x: 1.0, y: 1.0 });
+            RectTransform::set_anchoredPosition(toggle_group_tr, Vector2_t { x: 0.0, y: -48.0 });
+            RectTransform::set_sizeDelta(toggle_group_tr, Vector2_t { x: 0.0, y: 124.0 });
+
+            for (name, x, w) in [("RadioButtonOn", 289.0, 325.0), ("RadioButtonOff", 765.0, 325.0)] {
+                let rb = Transform::Find(toggle_group_tr, name.to_il2cpp_string());
+                if !rb.is_null() {
+                    RectTransform::set_anchoredPosition(rb, Vector2_t { x, y: -66.0 });
+                    RectTransform::set_sizeDelta(rb, Vector2_t { x: w, y: 100.0 });
+                }
+            }
+        }
         
         let text_common_type = il2cpp_type_get_object(il2cpp_class_get_type(TEXT_COMMON_CLASS));
         let text_commons = GameObject::GetComponentsInChildren(go, text_common_type, false);
@@ -477,6 +504,14 @@ fn create_option_2toggle(name: &str, title: &str, opt1: &str, opt2: &str, select
                 let set_vertical_overflow: extern "C" fn(*mut Il2CppObject, i32) = std::mem::transmute(SET_VERTICAL_OVERFLOW_ADDR);
                 set_vertical_overflow(t_title, 1);
             }
+            let title_rt = (*t_title).transform();
+            if !title_rt.is_null() {
+                RectTransform::set_anchorMin(title_rt, Vector2_t { x: 0.0, y: 1.0 });
+                RectTransform::set_anchorMax(title_rt, Vector2_t { x: 1.0, y: 1.0 });
+                RectTransform::set_pivot(title_rt, Vector2_t { x: 0.0, y: 1.0 });
+                RectTransform::set_anchoredPosition(title_rt, Vector2_t { x: 72.0, y: -12.0 });
+                RectTransform::set_sizeDelta(title_rt, Vector2_t { x: -72.0, y: 50.0 });
+            }
             if SET_TEXT_ADDR != 0 {
                 let set_text: extern "C" fn(*mut Il2CppObject, *mut Il2CppString) = std::mem::transmute(SET_TEXT_ADDR);
                 set_text(t_title, title.to_il2cpp_string());
@@ -484,11 +519,13 @@ fn create_option_2toggle(name: &str, title: &str, opt1: &str, opt2: &str, select
         }
         
         if let Some(t_opt1) = slice.get(1).copied() {
-            configure_text_element(t_opt1, opt1, 200.0);
+            GameObject::SetActive((*t_opt1).game_object(), true);
+            configure_text_element(t_opt1, opt1, 450.0);
         }
         
         if let Some(t_opt2) = slice.get(2).copied() {
-            configure_text_element(t_opt2, opt2, 200.0);
+            GameObject::SetActive((*t_opt2).game_object(), true);
+            configure_text_element(t_opt2, opt2, 450.0);
         }
         
         let toggle_group_common = GameObject::GetComponentInChildren(go, TOGGLE_GROUP_COMMON_TYPE, false);
@@ -848,17 +885,7 @@ fn open_hachimi_settings_dialog() {
             // read language setting
             {
                 use crate::core::hachimi::Language;
-                let lang = match SELECTED_LANGUAGE {
-                    0 => Language::English,
-                    1 => Language::TChinese,
-                    2 => Language::SChinese,
-                    3 => Language::Vietnamese,
-                    4 => Language::Indonesian,
-                    5 => Language::Spanish,
-                    6 => Language::BPortuguese,
-                    7 => Language::Filipino,
-                    _ => Language::English,
-                };
+                let lang = Language::from_index(SELECTED_LANGUAGE as usize);
                 config.language = lang;
                 lang.set_locale();
             }
@@ -1585,17 +1612,7 @@ unsafe fn init_settings_dialog_layout(parent_rt: *mut Il2CppObject) {
     // language selector
     {
         use crate::core::hachimi::Language;
-        let lang_idx = match config.language {
-            Language::English => 0,
-            Language::TChinese => 1,
-            Language::SChinese => 2,
-            Language::Vietnamese => 3,
-            Language::Indonesian => 4,
-            Language::Spanish => 5,
-            Language::BPortuguese => 6,
-            Language::Filipino => 7,
-        };
-        SELECTED_LANGUAGE = lang_idx;
+        SELECTED_LANGUAGE = config.language.to_index() as i32;
         add_enum_option!(
             parent_rt,
             "hachimi_language",
