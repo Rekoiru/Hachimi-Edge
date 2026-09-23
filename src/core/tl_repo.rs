@@ -4,7 +4,7 @@ use arc_swap::ArcSwap;
 use fnv::FnvHashMap;
 use rust_i18n::t;
 use serde::{Deserialize, Serialize};
-use size::Size;
+use size::{Base, Size};
 use thread_priority::{ThreadBuilderExt, ThreadPriority};
 
 use crate::core::game::Region;
@@ -99,7 +99,6 @@ struct UpdateInfo {
     cached_files: FnvHashMap<String, String>, // from repo cache
     size: usize,
     // New fields for better user communication, idk why it complains about these never being read
-    #[allow(dead_code)]
     update_size: usize,      // Size of changed files only
     #[allow(dead_code)]
     total_size: usize,       // Total size of all files (for ZIP downloads)
@@ -121,17 +120,27 @@ struct ModUpdateInfo {
     will_use_zip: bool,
 }
 
+#[derive(Default, Clone, Copy, PartialEq, Eq)]
+pub enum UpdatePhase {
+    #[default]
+    Checking,
+    Downloading,
+    Extracting
+}
+
 #[derive(Default, Clone)]
 pub struct UpdateProgress {
     pub current: usize,
-    pub total: usize
+    pub total: usize,
+    pub phase: UpdatePhase
 }
 
 impl UpdateProgress {
-    pub fn new(current: usize, total: usize) -> UpdateProgress {
+    pub fn new(current: usize, total: usize, phase: UpdatePhase) -> UpdateProgress {
         UpdateProgress {
             current,
-            total
+            total,
+            phase
         }
     }
 }
@@ -239,8 +248,13 @@ impl Updater {
         };
         let ld_dir_path = config.localized_data_dir.as_ref().map(|p| hachimi.get_data_path(p));
 
+        let checking_msg = if pedantic {
+            t!("notification.checking_tl_integrity")
+        } else {
+            t!("notification.checking_for_tl_updates")
+        };
         let checking_notif_id = if let Some(mutex) = Gui::instance() {
-            Some(mutex.lock().unwrap().show_persistent_notification(&t!("notification.checking_for_tl_updates")))
+            Some(mutex.lock().unwrap().show_persistent_notification(&checking_msg))
         } else {
             None
         };
@@ -391,16 +405,16 @@ impl Updater {
 
                         t!(
                             "tl_update_dialog.content_zip_warning",
-                            changed_size = Size::from_bytes(update_size),
-                            download_size = Size::from_bytes(total_size)
+                            changed_size = Size::from_bytes(update_size).format().with_base(Base::Base10),
+                            download_size = Size::from_bytes(total_size).format().with_base(Base::Base10)
                         )
                     } else {
                         // ZIP is being used but size difference is not significant
-                        t!("tl_update_dialog.content", size = Size::from_bytes(actual_download_size))
+                        t!("tl_update_dialog.content", size = Size::from_bytes(actual_download_size).format().with_base(Base::Base10))
                     }
                 } else {
                     // Incremental update or no warning needed
-                    t!("tl_update_dialog.content", size = Size::from_bytes(actual_download_size))
+                    t!("tl_update_dialog.content", size = Size::from_bytes(actual_download_size).format().with_base(Base::Base10))
                 };
 
                 mutex.lock().unwrap().show_window(Box::new(SimpleYesNoDialog::new(
@@ -423,7 +437,12 @@ impl Updater {
             }
             if !mod_updates_found {
                 if let Some(mutex) = Gui::instance() {
-                    mutex.lock().unwrap().show_notification(&t!("notification.no_tl_updates"));
+                    let msg = if pedantic {
+                        t!("notification.nothing_to_repair")
+                    } else {
+                        t!("notification.no_tl_updates")
+                    };
+                    mutex.lock().unwrap().show_notification(&msg);
                 }
             }
         }
@@ -543,7 +562,7 @@ impl Updater {
             })));
 
             if let Some(mutex) = Gui::instance() {
-                let dialog_message = t!("tl_update_dialog.content_mod", size = Size::from_bytes(actual_download_size));
+                let dialog_message = t!("tl_update_dialog.content_mod", size = Size::from_bytes(actual_download_size).format().with_base(Base::Base10));
 
                 mutex.lock().unwrap().show_window(Box::new(SimpleYesNoDialog::new(
                     &t!("tl_update_dialog.title_mod"),
@@ -583,8 +602,13 @@ impl Updater {
         };
         let ld_dir_path = config.localized_data_dir.as_ref().map(|p| hachimi.get_data_path(p));
 
+        let checking_msg = if pedantic {
+            t!("notification.checking_tlmod_integrity")
+        } else {
+            t!("notification.checking_for_tlmod_updates")
+        };
         let checking_notif_id = if let Some(mutex) = Gui::instance() {
-            Some(mutex.lock().unwrap().show_persistent_notification(&t!("notification.checking_for_tl_updates")))
+            Some(mutex.lock().unwrap().show_persistent_notification(&checking_msg))
         } else {
             None
         };
@@ -593,7 +617,12 @@ impl Updater {
         let found = self.check_for_mod_updates(mod_index_url, pedantic, &config, &ld_dir_path)?;
         if !found {
             if let Some(mutex) = Gui::instance() {
-                mutex.lock().unwrap().show_notification(&t!("notification.no_tl_updates"));
+                let msg = if pedantic {
+                    t!("notification.nothing_to_repair")
+                } else {
+                    t!("notification.no_tlmod_updates")
+                };
+                mutex.lock().unwrap().show_notification(&msg);
             }
         }
 
@@ -622,7 +651,7 @@ impl Updater {
         };
         self.new_update.store(Arc::new(None));
 
-        self.progress.store(Arc::new(Some(UpdateProgress::new(0, update_info.size))));
+        self.progress.store(Arc::new(Some(UpdateProgress::new(0, update_info.size, UpdatePhase::Downloading))));
         if let Some(mutex) = Gui::instance() {
             mutex.lock().unwrap().update_progress_visible = true;
         }
@@ -731,7 +760,7 @@ impl Updater {
             will_use_zip: mod_info.will_use_zip,
         };
 
-        self.progress.store(Arc::new(Some(UpdateProgress::new(0, update_info.size))));
+        self.progress.store(Arc::new(Some(UpdateProgress::new(0, update_info.size, UpdatePhase::Downloading))));
         if let Some(mutex) = Gui::instance() {
             mutex.lock().unwrap().update_progress_visible = true;
         }
@@ -826,7 +855,7 @@ impl Updater {
                             http::download_file_buffered(res, &mut file, &mut job.buffer, |bytes| {
                                 job.hasher.update(bytes);
                                 let prev_size = current_bytes_clone.fetch_add(bytes.len(), atomic::Ordering::SeqCst);
-                                updater.progress.store(Arc::new(Some(UpdateProgress::new(prev_size + bytes.len(), total_size))));
+                                updater.progress.store(Arc::new(Some(UpdateProgress::new(prev_size + bytes.len(), total_size, UpdatePhase::Downloading))));
                             })?;
 
                             let hash = job.hasher.finalize().to_hex().to_string();
@@ -913,7 +942,7 @@ impl Updater {
             let progress_bar = Arc::new(move |bytes_read: usize| {
                 let prev_size = downloaded_clone.fetch_add(bytes_read, atomic::Ordering::Relaxed);
                 let current = prev_size + bytes_read;
-                self_clone.progress.store(Arc::new(Some(UpdateProgress::new(current, progress_total))));
+                self_clone.progress.store(Arc::new(Some(UpdateProgress::new(current, progress_total, UpdatePhase::Downloading))));
             });
 
             http::download_file_parallel(
@@ -934,7 +963,7 @@ impl Updater {
             let zip_file = fs::File::open(&zip_path)?;
             let mmap = Arc::new(unsafe { memmap2::Mmap::map(&zip_file)? });
 
-            let total_size = update_info.size;
+            let total_size = update_info.update_size;
             let current_bytes = Arc::new(AtomicUsize::new(0));
             let non_fatal_error_count = Arc::new(AtomicUsize::new(0));
             let fatal_error = Arc::new(Mutex::new(None::<Error>));
@@ -1016,7 +1045,7 @@ impl Updater {
                                         }
                                         hasher.update(data_slice);
                                         let prev_size = current_bytes_clone.fetch_add(read_bytes, atomic::Ordering::SeqCst);
-                                        updater.progress.store(Arc::new(Some(UpdateProgress::new(prev_size + read_bytes, total_size))));
+                                        updater.progress.store(Arc::new(Some(UpdateProgress::new(prev_size + read_bytes, total_size, UpdatePhase::Extracting))));
                                     }
                                     Err(_) => {
                                         non_fatal_error_count_clone.fetch_add(1, atomic::Ordering::SeqCst);

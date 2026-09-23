@@ -50,7 +50,8 @@ menu:
   tl_check_for_updates: "\uf0aa 检查翻译更新"
   tl_check_for_updates_pedantic: "\uf0aa 修复翻译"
   addon_check_for_updates_pedantic: "\uf0aa 修复插件翻译"
-  dump_localize_dict: "导出本地化字典"
+  dump_localize_dict: "\uf019 导出本地化字典"
+  dump_meta_file: "\uf019 导出元数据"
   danger_zone_heading: "\uf071 危险操作"
   danger_zone_warning: "这些选项可能会对游戏产生异常影响，请谨慎使用！"
   soft_restart: "\uf021 软重启"
@@ -59,28 +60,37 @@ menu:
 
 notification:
   saved_localize_dump: "已保存到 localize_dump.json"
+  saved_meta_dump: "已保存到 meta_dump"
   config_reloaded: "配置已重新加载"
   config_saved: "配置已保存"
+  config_error: "配置文件损坏，将使用默认配置..."
   localized_data_reloaded: "本地化数据已重新加载"
   checking_for_tl_updates: "正在检查翻译更新..."
+  checking_for_tlmod_updates: "正在检查翻译插件更新..."
   no_tl_updates: "无可用翻译更新"
+  no_tlmod_updates: "无可用翻译插件更新..."
+  nothing_to_repair: "所有文件似乎都正常。"
+  checking_tl_integrity: "正在检查翻译完整性..."
+  checking_tlmod_integrity: "正在检查翻译插件完整性..."
   update_failed: "更新失败: %{reason}"
   update_completed: "更新完成"
+  mod_update_completed: "插件更新完成。"
   errors_during_update: "更新过程中出现 %{count} 个错误，详情请参阅日志"
   checking_for_updates: "正在检查更新..."
   no_updates: "无可用更新"
   press_to_set_menu_key: "请在游戏窗口按下新的按键以设为打开菜单按键"
   menu_open_key_set: "已设置打开菜单按键为 %{key}"
   ipc_softreset_exec: "已远程软重启（IPC）"
+  asset_mismatch: "由于更新，部分资源已被禁用。详情请检查日志。"
 
 first_time_setup:
   title: "初始化设置"
   welcome_heading: "欢迎"
   welcome_content: >-
     Hachimi 已安装成功！本向导将引导您完成初始设置。
-    
     如果您不需要使用翻译功能，可以直接关闭此窗口跳过设置。
-    
+
+
     免责声明：Hachimi 是一个社区驱动的项目。所有翻译均由不同的社区贡献者制作。
     该项目并非由 Cygames, Inc. 开发或认可，且违反了游戏的服务条款。继续使用即表示
     您接受自行承担使用风险。
@@ -91,13 +101,12 @@ first_time_setup:
   complete_heading: "全部完成！"
   complete_content: >-
     点击「完成」以保存配置。
-    
     如果您选择了翻译仓库，系统将执行更新检查，
     并提示您下载新的翻译数据。
 
 about:
   title: "关于"
-  copyright: "© 2024-%{year} LeadRDRK, kairusds 及贡献者"
+  copyright: "© 2024-%{year} LeadRDRK、kairusds 及贡献者"
   view_license: "查看许可证"
   open_website: "打开网站"
   view_source_code: "查看源代码"
@@ -117,22 +126,33 @@ config_editor:
   general_tab: "\uf013 常规"
   graphics_tab: "\uf03e 图形"
   gameplay_tab: "\uf11b 游戏玩法"
+  advanced_tab: "\uf0ad 高级"
   language: "语言"
   restore_defaults: "恢复默认设置"
-  disable_overlay: "禁用覆盖层(GUI)"
+  disable_overlay: "禁用覆盖层（GUI）"
   disable_overlay_warning: >-
     此选项将在游戏重启后禁用Hachimi的GUI，
     您将无法再访问配置编辑器。
     如非本意，请关闭此窗口并禁用此选项。
+  ipv4_only: "仅接收 IPv4 请求"
   meta_index_url: "翻译 Meta URL"
   debug_mode: "调试模式"
-  enable_file_logging: "启用文件日志记录"
+  text_debug: "文本调试模式"
+  text_log: "记录文本处理日志"
+  text_property_dump: "导出 UI 属性"
+  text_localize_dump: "导出本地化字符串"
+  text_position_debug: "记录位置偏移日志"
+  text_path_debug: "记录 UI 路径日志"
+  enable_file_logging: "记录日志"
+  localized_data_dir: "本地化数据目录"
   apply_atlas_workaround: "应用翻译 Atlas 修复"
+  disable_outdated_asset_notif: "禁用资源过期通知"
   translator_mode: "翻译者模式"
   skip_first_time_setup: "跳过初始化设置"
-  lazy_translation_updates: "宽松翻译更新检查"
-  disable_auto_update_check: "禁用自动更新检查"
-  disable_translations: "禁用翻译功能"
+  lazy_translation_updates: "检查翻译更新（宽松）"
+  disable_auto_update_check: "禁用自动检查更新"
+  disable_mod_downloads: "禁用翻译插件下载"
+  disable_translations: "禁用翻译"
   enable_ipc: "启用 IPC"
   ipc_listen_all: "IPC 监听所有地址"
   auto_translate_stories: "自动翻译剧情"
@@ -142,7 +162,6 @@ config_editor:
     或使用提供 API 的云服务（如 py3translationServer 或 Sugoi Toolkit）。
     若未运行服务器，将无法进行额外翻译，且可能影响游戏运行。
     如果您没有可用的翻译服务器，请保持此选项关闭。
-  ipv4_only: "仅接收 IPv4 请求"
   auto_translate_ui: "自动翻译游戏界面 (可能导致游戏界面异常)"
   target_fps: "目标帧率"
   virtual_resolution_multiplier: "分辨率缩放倍数"
@@ -165,19 +184,21 @@ config_editor:
   story_choice_auto_select_delay: "剧情选项自动选择延迟"
   story_text_speed_multiplier: "剧情文本速度倍率"
   force_allow_dynamic_camera: "强制启用动态镜头"
-  live_theater_allow_same_chara: "在 LIVE 剧场中 允许设置多个相同角色"
+  live_theater_allow_same_chara: "在 Live 剧场中允许设置多个相同角色"
   physics_update_mode: "物理引擎更新模式"
   disable_skill_name_translation: "禁用技能名称翻译"
-  hide_ingame_ui_hotkey: "隐藏游戏内 UI 的快捷键"
+  hide_ingame_ui_hotkey: "隐藏游戏内 UI 快捷键"
   hide_ingame_ui_hotkey_info: >-
     此选项允许使用快捷键切换游戏内 UI 界面的显示。
-    Android 端，您需要双击“音量上键”，或连续三次点击屏幕右上角。
+    Android 端，可连续三次点击屏幕右上角。
     对于配备键盘的 PC/Android 设备，默认按键为 Insert，并可在 GUI 或配置文件中进行更改。
-  menu_open_key: "打开菜单按键"
+  discord_rpc: "Discord RPC"
+  menu_open_key: "打开菜单快捷键"
   menu_open_key_set: "按下以设置"
-  render_scale: "渲染比例"
+  msaa: "MSAA"
+  render_scale: "渲染缩放"
   aniso_level: "各向异性过滤"
-  live_vocals_swap: "Live演唱人声切换"
+  live_vocals_swap: "Live 剧场音轨替换"
   live_vocals_swap_character_n: "角色 %{index}"
   skill_info_dialog: "自定义技能信息弹窗"
   homescreen_bgseason: "主界面背景季节"
@@ -193,20 +214,22 @@ theme_editor:
   ui_window_rounding: "圆角半径"
 
 tl_update_dialog:
-  title: "新翻译更新可用"
-  content: "新的翻译更新可用 (%{size})，是否下载？"
-  content_zip_warning: "有新的翻译更新可用（%{changed_size}）。此更新将重新下载完整的存档（%{download_size}）。"
+  title: "发现翻译更新"
+  title_mod: "发现插件更新"
+  content: "发现新的翻译更新（%{size}）。是否下载？"
+  content_mod: "发现新的插件更新（%{size}）。是否下载？"
+  content_zip_warning: "发现新的翻译更新（%{changed_size}）。本次更新将改为下载完整压缩包（%{download_size}）。"
 
 update_prompt_dialog:
   title: "新版本可用"
   content: |
-    发现新的 Hachimi 更新 (%{version})，是否立即安装？
+    发现新的 Hachimi Edge 更新 (%{version})，是否立即安装？
     安装完成后游戏将自动重启。
   android_content: |
-    检测到 Hachimi Edge 的新版本 (%{version})。是否更新？
+    检测到 Hachimi Edge 的新版本 (%{version})！
 
-    点击“是”将跳转至 UmaPatcher Edge，在其中重新为当前游戏补丁以更新 Hachimi。
-    (无需重新下载完整游戏文件或 APK，重新为当前游戏版本的 APK 补丁并安装即可，UmaPatcher Edge 将自动下载最新版本的 Hachimi Edge。)
+    是否要打开 UmaPatcher Edge 以开始更新？
+    注意：自动更新程序需要 UmaPatcher Edge v1.5.0+。
 
 updating_dialog:
   title: "更新中"
@@ -220,7 +243,7 @@ steam_overlay_conflict_dialog:
     如果您无法进行内购，请按「是」以临时禁用 Hachimi GUI 并关闭游戏。
     在下次启动游戏时，Hachimi GUI 将被禁用，此时您可以正常进行内购操作。
     购买完成后，请重启游戏以重新启用 Hachimi GUI。
-    
+
 key_names:
   left: "左方向键"
   right: "右方向键"

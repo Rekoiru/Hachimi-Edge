@@ -50,7 +50,8 @@ menu:
   tl_check_for_updates: "\uf0aa Kiểm tra cập nhật bản dịch"
   tl_check_for_updates_pedantic: "\uf0aa Sửa lỗi bản dịch"
   addon_check_for_updates_pedantic: "\uf0aa Sửa lỗi bản dịch addon"
-  dump_localize_dict: "Xuất file localize dict"
+  dump_localize_dict: "\uf019 Xuất file localize dict"
+  dump_meta_file: "\uf019 Xuất file meta"
   danger_zone_heading: "\uf071 Vùng nguy hiểm"
   danger_zone_warning: "Những lựa chọn này có thể gây ra các tác dụng không mong muốn. Hãy sử dụng cẩn thận!"
   soft_restart: "\uf021 Soft restart"
@@ -59,13 +60,20 @@ menu:
 
 notification:
   saved_localize_dump: "Đã lưu localize_dump.json"
+  saved_meta_dump: "Đã lưu meta_dump"
   config_reloaded: "Đã tải lại cài đặt."
   config_saved: "Đã lưu cài đặt."
   localized_data_reloaded: "Đã tải lại dữ liệu dịch."
   checking_for_tl_updates: "Đang kiểm tra cập nhật bản dịch..."
+  checking_for_tlmod_updates: "Đang kiểm tra cập nhật bản dịch addon..."
   no_tl_updates: "Không có bản cập nhật bản dịch."
+  no_tlmod_updates: "Không có bản cập nhật bản dịch addon."
+  nothing_to_repair: "Tất cả các tệp có vẻ đều ổn."
+  checking_tl_integrity: "Đang sửa lỗi bản dịch..."
+  checking_tlmod_integrity: "Đang sửa lỗi bản dịch addon..."
   update_failed: "Cập nhật thất bại: %{reason}"
   update_completed: "Cập nhật thành công."
+  mod_update_completed: "Cập nhật addon thành công."
   errors_during_update: "%{count} lỗi đã xảy ra trong lúc cập nhật. Kiểm tra log để biết thêm thông tin."
   checking_for_updates: "Đang kiểm tra cập nhật..."
   no_updates: "Không có bản cập nhật."
@@ -159,7 +167,7 @@ config_editor:
   hide_ingame_ui_hotkey: "Phím tắt ẩn giao diện trong game"
   hide_ingame_ui_hotkey_info: >-
     Tùy chọn này cho phép sử dụng phím tắt để ẩn/hiện giao diện (UI) trong trò chơi.
-    Đối với Android, bạn cần nhấn đúp phím Tăng âm lượng, hoặc nhấn ba lần vào góc trên bên phải màn hình.
+    Đối với Android, bạn có thể nhấn ba lần vào góc trên bên phải màn hình.
     Đối với PC/Android có bàn phím, đó là phím Insert và có thể được cấu hình trong GUI hoặc tệp config.
   menu_open_key: "Phím tắt mở menu"
   menu_open_key_set: "Nhấn để thiết lập"
@@ -191,10 +199,10 @@ update_prompt_dialog:
     Đã có phiên bản Hachimi mới (%{version}). Bạn có muốn cài đặt không?
     Game sẽ được khởi động lại để áp dụng bản cập nhật.
   android_content: |
-    Đã có bản cập nhật Hachimi Edge mới (%{version}). Bạn có muốn cài đặt không?
+    Đã có bản cập nhật Hachimi Edge mới (%{version}).
 
-    Nhấn "Có" để mở UmaPatcher Edge và patch lại game hiện tại của bạn.
-    (Không cần tải lại toàn bộ game hay APK, bạn chỉ cần patch lại như bình thường vì UmaPatcher Edge luôn tự tải về phiên bản Hachimi Edge mới nhất.)
+    Bạn có muốn cài đặt không?
+    Lưu ý: Auto-updater yêu cầu UmaPatcher Edge v1.5.0+.
 
 updating_dialog:
   title: "Đang cập nhật"

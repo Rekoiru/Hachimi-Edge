@@ -49,33 +49,34 @@ menu:
   reload_localized_data: "\uf021 번역 파일(localized) 재로드"
   tl_check_for_updates: "\uf0aa 번역 업데이트 확인"
   tl_check_for_updates_pedantic: "\uf0aa 번역 업데이트 확인 (pedantic)"
-  addon_check_for_updates_pedantic: "\uf0aa Repair translations (addons)"
-  dump_localize_dict: "번역 파일(localized) 덤프 만들기"
+  dump_localize_dict: "\uf019 번역 파일(localized) 덤프 만들기"
+  dump_meta_file: "\uf019 메타 파일(meta) 덤프 만들기"
   danger_zone_heading: "\uf071 개발자 웁션"
   danger_zone_warning: "게임에 문제를 일으키거나 의도하지 않은 일이 일어날수 있습니다. 주의하세요!"
   soft_restart: "\uf021 게임 재시작(타이틀 화면으로)"
   open_in_game_browser: "\uf0ac 인게임 브라우져 열기"
   toggle_game_ui: "\uf06e 게임 ui 크기"
-  discord_rpc: "Discord RPC"
 
 notification:
   saved_localize_dump: "localize_dump.json 에 저장됨"
+  saved_meta_dump: "meta_dump 에 저장됨"
   config_reloaded: "고급 설정 재로드됨."
   config_saved: "고급 설정 저장됨."
   config_error: "고급 설정이 문제를 일으키거나 게임과 충돌했습니다. 기본값으로 되돌립니다..."
   localized_data_reloaded: "번역 파일(localized) 재로드됨."
   checking_for_tl_updates: "번역 업데이트 확인..."
+  checking_for_tlmod_updates: "번역 업데이트 확인..."
   no_tl_updates: "최신 버전을 사용하고 있습니다."
+  no_tlmod_updates: "최신 버전을 사용하고 있습니다."
+  nothing_to_repair: "모든 파일이 정상입니다."
+  checking_tl_integrity: "번역 파일 무결성 검사 중..."
+  checking_tlmod_integrity: "번역 애드온 무결성 검사 중..."
   update_failed: "업데이트 실패: %{reason}"
   update_completed: "업데이트 완료."
-  mod_update_completed: "번역 애드온 업데이트 완료."
   errors_during_update: "%{count}개의 오류가 발생했습니다. 자세한 정보를 확인하세요."
   checking_for_updates: "업데이트를 확인합니다..."
   no_updates: "최신 버전을 사용중입니다."
-  press_to_set_menu_key: "메뉴 열기 단축키를 설정하려면 게임 창에서 키를 누르세요."
-  menu_open_key_set: "메뉴 열기 단축키가 %{key}(으)로 설정되었습니다."
-  ipc_softreset_exec: "IPC soft-reset 명령이 실행되었습니다."
-  asset_mismatch: "일부 리소스들이 업데이트로 인해 비활성화되었습니다. 자세한 내용은 로그를 확인하세요."
+  ipc_softreset_exec: "IPC remote soft-reset executed"
 
 first_time_setup:
   title: "초회 설치"
@@ -91,10 +92,6 @@ first_time_setup:
   select_translation_repo: "선택하세요:"
   no_compatible_repo: "현재 버전과 호환되는 번역 파일 배포가 없습니다."
   skip_translation: "번역 설정 건너뛰기."
-  common_settings_heading: "보편적으로 찾는 설정들"
-  common_settings_content: >-
-    아래는 보편적으로 수정하기 원해하는 경향이 있는 설정들입니다.
-    상술한 설정들은 언제든지 고급 설정에서 변경하실수 있습니다.
   complete_heading: "완료!"
   complete_content: >-
     번역파일 업데이트를 확인하시는 것을 권장합니다.
@@ -108,27 +105,16 @@ about:
 
 license:
   title: "이용 허가"
-  gpl_v3_only_notice: "GPL-3.0-only"
-  ofl_fonts_header: "This software bundles the following fonts under the SIL Open Font License 1.1:"
-  font_inter: "Inter: Copyright 2020 The Inter Project Authors (https://github.com/rsms/inter)"
-  font_font_awesome: "Font Awesome Version 4.7.0: Copyright Dave Gandy (https://fontawesome.com) 2016. All rights reserved."
-  ofl_notice: "SIL OFL 1.1 License Text"
-  font_alibaba_header: "Alibaba PuHuiTi 3.0"
-  font_alibaba_body: "Copyright (c) 2020-2023 Alibaba (China) Co., Ltd. All rights reserved."
 
 tl_updater:
   title: "업데이트 중..."
   warning: "업데이트 하는 동안에는 번역이 비활성화 됩니다"
 
 config_editor:
-  adjust: "수정"
-  hachimi_settings: "Hachimi 설정"
-  open_settings: "고급 설정 열기"
   title: "고급 설정"
   general_tab: "\uf013 일반"
   graphics_tab: "\uf03e 품질"
   gameplay_tab: "\uf11b 게임"
-  advanced_tab: "\uf0ad 고급"
   language: "언어"
   restore_defaults: "기본값으로 되돌리기"
   disable_overlay: "그래픽 사용자 인터페이스 비활성화"
@@ -138,21 +124,12 @@ config_editor:
   ipv4_only: "IP6 비활성"
   meta_index_url: "번역 파일 배포 목록 출처"
   debug_mode: "오류 수정 모드"
-  text_debug: "텍스트 디버그 모드"
-  text_log: "텍스트 로깅"
-  text_property_dump: "UI 속성 덤프"
-  text_localize_dump: "로컬라이즈 데이터 덤프"
-  text_position_debug: "위치 오프셋 로깅"
-  text_path_debug: "UI 경로 로깅"
   enable_file_logging: "로그 파일 기록 키기"
-  localized_data_dir: "번역 데이터 폴더"
   apply_atlas_workaround: "tl workaround 키기"
-  disable_outdated_asset_notif: "최신 버전이 아닌 리소스 알림 끄기"
   translator_mode: "번역 모드"
   skip_first_time_setup: "초회 설정 키기"
   lazy_translation_updates: "느린 번역 업데이트"
   disable_auto_update_check: "자동 업데이트 끄기"
-  disable_mod_downloads: "번역 애드온 다운로드 끄기"
   disable_translations: "번역 끄기"
   enable_ipc: "IPC 키기"
   ipc_listen_all: "IPC 항상 허용"
@@ -184,7 +161,6 @@ config_editor:
   story_choice_auto_select_delay: "스토리 자동 진행 지연"
   story_text_speed_multiplier: "스토리 배속"
   force_allow_dynamic_camera: "우마무스메 1인칭 시점 웁션 강제 활성화"
-  free_camera: "Free Camera"
   live_theater_allow_same_chara: "라이브 다시보기에서 동일한 우마무스메 두명이상 배치 강제 활성화"
   physics_update_mode: "Physics update mode"
   disable_skill_name_translation: "스킬 이름 번역 끄기"
@@ -194,9 +170,7 @@ config_editor:
     For Android, you can triple tap the top right of the screen.
     For PC/Android with keyboard, it's the Insert key by default and can be configured in the gui or config.
   discord_rpc: "Discord RPC"
-  enable_smtc: "Enable Windows Media Controls"
   menu_open_key: "Open menu hotkey"
-  menu_open_key_set: "Press to set"
   msaa: "MSAA"
   render_scale: "Render Scale"
   aniso_level: "Anisotropic Filtering"
@@ -217,9 +191,7 @@ theme_editor:
 
 tl_update_dialog:
   title: "업데이트 가능"
-  title_mod: "번역 애드온 업데이트 가능"
   content: "새 업데이트가 있습니다 (%{size}). 다운로드 하시겠습니까?"
-  content_mod: "번역 애드온 업데이트가 있습니다 (%{size}). 다운로드 하시겠습니까?"
   content_zip_warning: "새 업데이트가 있습니다 (%{changed_size}). 전체 파일을 내려받습니다. (%{download_size}) "
 
 update_prompt_dialog:
@@ -231,8 +203,7 @@ update_prompt_dialog:
     하치미 패치의 새 업데이트가 있습니다 (%{version}).
 
     UmaPatcher Edge에서 다시 패치하세요.
-
-    Note: apk파일은 이미 있는것을 사용하시면 됩니다!
+    참고: 자동 업데이트 기능에는 UmaPatcher Edge v1.5.0 이상이 필요합니다.
 
 updating_dialog:
   title: "업데이트중"
@@ -271,26 +242,6 @@ key_names:
   alt: "Alt"
   ctrl: "Ctrl"
   shift: "Shift"
-  dpad_up: "D-Pad Up"
-  dpad_down: "D-Pad Down"
-  dpad_left: "D-Pad Left"
-  dpad_right: "D-Pad Right"
-  volume_up: "Volume Up"
-  volume_down: "Volume Down"
-  copy: "Copy"
-  cut: "Cut"
-  paste: "Paste"
-  semicolon: ";"
-  comma: ","
-  backslash: "\\"
-  slash: "/"
-  left_bracket: "["
-  right_bracket: "]"
-  grave: "`"
-  minus: "-"
-  period: "."
-  plus: "+"
-  equals: "="
   numpad_0: "Numpad 0"
   numpad_1: "Numpad 1"
   numpad_2: "Numpad 2"

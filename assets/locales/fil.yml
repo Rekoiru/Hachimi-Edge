@@ -4,7 +4,7 @@ windows:
   menu_open_key: "Kanang arrow"
 
 android:
-  menu_open_key: "Vol Up + Vol Down\n\uf25a o i-tap nang tatlong beses\nang kaliwang itaas na bahagi ng screen"
+  menu_open_key: "Vol Up + Vol Down\n\uf25a o i-tap nang tatlong beses ang top-left ng screen"
 
 splash_sub: "\uf015 Pindutin ang %{open_key_str} para buksan ang menu."
 loading_label: "Naglo-load..."
@@ -22,7 +22,7 @@ enable: "I-enable"
 info: "Impormasyon"
 warning: "Babala"
 confirm_dialog_title: "Kumpirmahin"
-soft_restart_confirm_content: "Gusto mo bang i-soft restart ang laro?"
+soft_restart_confirm_content: "Gusto mo ba talaga i-soft restart ang laro?"
 in_game_browser_confirm_content: "Gusto mo bang buksan ang in-game na browser?"
 
 menu:
@@ -39,24 +39,31 @@ menu:
   tl_check_for_updates: "\uf0aa Tignan kung may update sa translations"
   tl_check_for_updates_pedantic: "\uf0aa Ayusin ang translations"
   addon_check_for_updates_pedantic: "\uf0aa Ayusin ang mga addon translations"
-  dump_localize_dict: "I-dump ang localize dict"
+  dump_localize_dict: "\uf019 I-dump ang localize dict"
+  dump_meta_file: "\uf019 I-dump ang meta"
   danger_zone_heading: "\uf071 Danger Zone"
   danger_zone_warning: "Maaaring magkaroon ng hindi inaasahang epekto sa laro ang mga opsyong ito. Gamitin nang may pag-iingat!"
   soft_restart: "\uf021 I-soft restart"
   open_in_game_browser: "\uf0ac Buksan ang in-game na browser"
   toggle_game_ui: "\uf06e I-toggle ang game UI"
-  discord_rpc: "Discord RPC"
 
 notification:
   saved_localize_dump: "Na-save sa localize_dump.json"
+  saved_meta_dump: "Na-save sa meta_dump"
   config_reloaded: "Na-reload ang config."
   config_saved: "Na-save ang config."
   config_error: "Nasira ang config, gagamitin ang mga default sa halip..."
   localized_data_reloaded: "Na-reload ang data ng pag-translate."
   checking_for_tl_updates: "Tinitignan kung may update sa translations..."
+  checking_for_tlmod_updates: "Tinitignan kung may update sa addon translations..."
   no_tl_updates: "Walang available na update sa translations."
+  no_tlmod_updates: "Walang available na update sa addon translations..."
+  nothing_to_repair: "Mukhang maayos naman ang lahat."
+  checking_tl_integrity: "Inaayos ang mga translation..."
+  checking_tlmod_integrity: "Inaayos ang mga addon translation..."
   update_failed: "Nabigo ang pag-update: %{reason}"
   update_completed: "Tapos na ang pag-update."
+  mod_update_completed: "Tapos na ang karagdagang pag-update."
   errors_during_update: "May %{count} na error na nangyari habang naga-update. Suriin ang mga log para sa mga detalye."
   checking_for_updates: "Tinitignan kung may update..."
   no_updates: "Walang update na available."
@@ -75,7 +82,7 @@ first_time_setup:
 
 
     DISCLAIMER: Isang proyekto na pinangungunahan ng komunidad ang Hachimi. Ginawa
-    ng mga iba't ibang mga kontribyutor ang mga translations. Hindi ito binuo o ineendorso
+    ng mga iba't ibang mga kontribyutor ang mga translator. Hindi ito binuo o ineendorso
     ng Cygames, Inc., at lumalabag ito sa Mga Tuntunin sa Serbisyo. Sa pamamagitan ng pagpatuloy,
     tinatanggap mo na gagamitin mo ito sa iyong sariling peligro.
   translation_repo_heading: "Repo ng translations"
@@ -96,9 +103,6 @@ about:
 
 license:
   title: "Lisensya"
-  gpl_v3_only_notice: "Text ng GPL-3.0-only License"
-  ofl_fonts_header: "Kasama sa software na ito ang mga sumusunod na font na nasa ilalim ng SIL Open Font License 1.1:"
-  ofl_notice: "Text ng SIL OFL 1.1 License"
 
 tl_updater:
   title: "Ina-update..."
@@ -116,8 +120,8 @@ config_editor:
     Idi-disable nito ang Hachimi overlay pagkatapos mo i-restart ang laro.
     na nangangahulugan na HINDI mo maa-access ang Config Editor pagkatpos nito.
     Kapag hindi ito sinasadya, isara ang dialog na ito at I-DISABLE ang opsyon.
-  ipv4_only: "I-disable ang IPv6 sa Updater"
-  meta_index_url: "URL ng Translation Metadata"
+  ipv4_only: "IPv4 na ureq lamang"
+  meta_index_url: "URL ng Translation Meta"
   enable_file_logging: "I-enable ang logging sa file"
   apply_atlas_workaround: "I-apply ang TL atlas workaround"
   skip_first_time_setup: "Laktawan ang first-time setup"
@@ -137,7 +141,7 @@ config_editor:
   ui_scale: "Laki ng UI"
   gui_scale: "Laki ng Overlay"
   gui_landscape_ratio: "Overlay scale ratio sa landscape"
-  ui_animation_scale: "Bilis ng UI animation"
+  ui_animation_scale: "Biliis ng UI animation"
   graphics_quality: "Kalidad ng graphics"
   full_screen_mode_exclusive: "Eksklusibo"
   block_minimize_in_full_screen: "I-block ang pag-minimize sa full screen"
@@ -152,40 +156,40 @@ config_editor:
   hide_ingame_ui_hotkey: "I-enable ang hotkey ng pagtago ng game UI"
   hide_ingame_ui_hotkey_info: >-
     Pinapayagan ng opsyong ito ang isang shortcut key sa pag-toggle ng game UI.
-    Para sa Android, maaari mong i-triple tap ang top-right ng screen.
+    Para sa Android, kailangan mong i-double tap ang Volume Up key, o i-triple tap ang top-right ng screen.
     Para sa PC/Android na may keyboard, ito ang Insert key at maaaring i-configure sa GUI o config.
   discord_rpc: "Discord RPC"
   menu_open_key: "Hotkey ng pagbukas ng menu"
   menu_open_key_set: "Itakda"
-  live_vocals_swap: "Pagpalit ng Vocals sa Live Theater"
+  live_vocals_swap: "Pagpalit ng Vocals sa Live"
   skill_info_dialog: "Custom na dialog ng skill info"
   homescreen_bgseason: "Panahon ng Homescreen Background"
   shadow_resolution: "Resolution ng Shadows"
 
 theme_editor:
-  title: "Editor ng Tema sa GUI"
+  title: "Editor ng GUI Theme"
   ui_accent_color: "Kulay ng Accent"
   ui_window_fill: "Kulay ng Window Background"
   ui_panel_fill: "Kulay ng Panel Background"
-  ui_extreme_bg_color: "Background ng Input"
+  ui_extreme_bg_color: "Background Input"
   ui_text_color: "Kulay ng Text"
   ui_window_rounding: "Mga Rounded Corner"
 
 tl_update_dialog:
   title: "May bagong update"
-  content: "May bagong update sa translations (%{size}). Gusto mo ba itong i-download?"
-  content_zip_warning: "May bagong update sa translations (%{changed_size}). Ida-download ng update na ito ang buong archive (%{download_size}). Gusto mo ba itong i-download?"
+  content: "May bagong update sa translations (%{size}). Gusto mo ba ito i-download?"
+  content_zip_warning: "May bagong update sa translations (%{changed_size}). Ida-download ng update na ito ang buong archive (%{download_size}) sa halip."
 
 update_prompt_dialog:
   title: "May bagong update"
   content: |
-    May bagong update na available para sa Hachimi (%{version}). Gusto mo ba ito i-install?
+    May bagong update na available para sa Hachimi Edge (%{version}). Gusto mo ba ito i-install?
     Ire-restart ang laro para ma-apply ang update.
   android_content: |
-    May bagong update na available para sa Hachimi (%{version}). Gusto mo ba ito i-install?
+    May bagong update na available para sa Hachimi Edge (%{version}).
 
-    Pindutin ang "Oo" para buksan ang UmaPatcher Edge at i-patch muli ang laro.
-    (Hindi kailangang i-download muli ang laro o APK, kailangan mo lang mag-patch muli tulad ng dati mong ginamit na method dahil palaging dina-download ng UmaPatcher Edge ang pinakabagong version ng Hachimi Edge.)
+    Gusto mo bang buksan ang UmaPatcher Edge para simulan ang updater?
+    Tandaan: Kinakailangan ng auto-updater ang UmaPatcher Edge v1.5.0 o mas mataas
 
 updating_dialog:
   title: "Ina-update..."

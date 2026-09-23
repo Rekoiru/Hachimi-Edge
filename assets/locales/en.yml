@@ -48,9 +48,10 @@ menu:
   translation_heading: "\uf02d Translation"
   reload_localized_data: "\uf021 Reload localized data"
   tl_check_for_updates: "\uf0aa Check for translation updates"
-  tl_check_for_updates_pedantic: "\uf0aa Repair translations"
-  addon_check_for_updates_pedantic: "\uf0aa Repair translations (addons)"
-  dump_localize_dict: "Dump localize dict"
+  tl_check_for_updates_pedantic: "\uf0ad Repair translations"
+  addon_check_for_updates_pedantic: "\uf0ad Repair translations (addons)"
+  dump_localize_dict: "\uf019 Dump localize dict"
+  dump_meta_file: "\uf019 Dump meta"
   danger_zone_heading: "\uf071 Danger Zone"
   danger_zone_warning: "These options might have unintended effects on the game. Use with caution!"
   soft_restart: "\uf021 Soft restart"
@@ -60,12 +61,18 @@ menu:
 
 notification:
   saved_localize_dump: "Saved to localize_dump.json"
+  saved_meta_dump: "Saved to meta_dump"
   config_reloaded: "Config reloaded."
   config_saved: "Config saved."
   config_error: "The config has been corrupted. Using defaults instead..."
   localized_data_reloaded: "Localized data reloaded."
   checking_for_tl_updates: "Checking for translation updates..."
+  checking_for_tlmod_updates: "Checking for translation addon updates..."
   no_tl_updates: "No translation updates available."
+  no_tlmod_updates: "No translation updates available. (addon)"
+  nothing_to_repair: "All files seem to be good."
+  checking_tl_integrity: "Verifying translation integrity..."
+  checking_tlmod_integrity: "Verifying translation addon integrity..."
   update_failed: "Update failed: %{reason}"
   update_completed: "Update completed."
   mod_update_completed: "Addon update completed."
@@ -226,13 +233,13 @@ tl_update_dialog:
 update_prompt_dialog:
   title: "New update available"
   content: |
-    A new Hachimi update is available (%{version}). Do you want to install it?
+    A new Hachimi Edge update is available (%{version}). Do you want to install it?
     The game will be restarted in order to apply the update.
   android_content: |
-    A new Hachimi Edge update is available (%{version}). Do you want to install it?
+    A new Hachimi Edge update is available (%{version})!
 
-    Tap "Yes" to open UmaPatcher Edge and re-patch your current game.
-    (No full game or APK re-download required, you only need to patch again like you normally would as UmaPatcher Edge always downloads the latest Hachimi Edge version.)
+    Do you want to open UmaPatcher Edge to start the updater?
+    Note: Auto-updater requires UmaPatcher Edge v1.5.0+.
 
 updating_dialog:
   title: "Updating"

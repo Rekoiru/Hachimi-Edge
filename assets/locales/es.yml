@@ -50,24 +50,31 @@ menu:
   tl_check_for_updates: "\uf0aa Actualizar traducción"
   tl_check_for_updates_pedantic: "\uf0aa Reparar traducción"
   addon_check_for_updates_pedantic: "\uf0aa Reparar traducción (addons)"
-  dump_localize_dict: "Exportar localize dict"
+  dump_localize_dict: "\uf019 Volcar localize dict"
+  dump_meta_file: "\uf019 Volcar meta"
   danger_zone_heading: "\uf071 Zona Peligrosa"
   danger_zone_warning: "Las siguientes opciones podrían tener efectos adversos en el juego. ¡Úsalas con precaución!"
   soft_restart: "\uf021 Forzar reinicio"
   open_in_game_browser: "\uf0ac Abrir navegador en juego"
   toggle_game_ui: "\uf06e Alternar el UI del juego"
-  discord_rpc: "Discord RPC"
 
 notification:
-  saved_localize_dump: "Exportado en localize_dump.json"
+  saved_localize_dump: "Exportado como localize_dump.json"
+  saved_meta_dump: "Exportado como meta_dump"
   config_reloaded: "Configuración recargada."
   config_saved: "Configuración guardada."
   config_error: "La configuración está corrupta, se han restablecido los ajustes por defecto."
   localized_data_reloaded: "Localización recargada."
   checking_for_tl_updates: "Buscando nuevas traducciones..."
+  checking_for_tlmod_updates: "Buscando nuevas traducciones adicionales..."
   no_tl_updates: "No hay nuevas traducciones."
+  no_tlmod_updates: "No hay nuevas traducciones adicionales."
+  nothing_to_repair: "Todo parece estar bien."
+  checking_tl_integrity: "Verificando integridad de traducciones..."
+  checking_tlmod_integrity: "Verificando integridad de traducciones adicionales..."
   update_failed: "Fallo al actualizar: %{reason}"
   update_completed: "Actualización completada."
+  mod_update_completed: "Actualización adicional completada."
   errors_during_update: "Han ocurrido (%{count}) errores mientras se actualizaba. Comprueba los registros para más detalles."
   checking_for_updates: "Buscando nueva versión de Hachimi..."
   no_updates: "Ya estás usando la última versión."
@@ -76,12 +83,11 @@ notification:
   ipc_softreset_exec: "Reinicio suave remoto (IPC) ejecutado con éxito."
   asset_mismatch: "Algunos assets fueron desactivados debido a una actualización. Consulta el registro para más detalles."
 
-
 first_time_setup:
   title: "Instalación Inicial"
   welcome_heading: "Bienvenido/a"
   welcome_content: >-
-    ¡Has instalado Hachimi correctamente! Esta ventana te guiará por el proceso de
+    ¡Has instalado Hachimi Edge correctamente! Esta ventana te guiará por el proceso de
     instalación inicial. Si no te interesa usar las funciones de traducción, omite
     el proceso con solo cerrar este diálogo.
 
@@ -220,14 +226,14 @@ tl_update_dialog:
 update_prompt_dialog:
   title: "Nueva versión disponible"
   content: |
-    Una nueva versión de Hachimi se encuentra disponible (%{version}).
-    ¿Quieres instalarla ahora? El juego será reiniciado para así poder
+    Una nueva versión de Hachimi Edge se encuentra disponible (%{version}).
+    ¿Quieres instalarla ahora? Se reiniciará el juego para así poder
     aplicar la actualización.
   android_content: |
-    Se ha encontrado una nueva versión de Hachimi Edge (%{version}). ¿Quieres instalarla ahora?
+    Se ha encontrado una nueva versión de Hachimi Edge (%{version}).
 
-    Pulsando "Sí" te abrirá UmaPatcher Edge para que vuelvas a parchear el juego.
-    (Ten preparados los archivos del juego (APK) y vuelve a parchearlo como lo harías normalmente. UmaPatcher Edge siempre descargará la nueva versión de Hachimi Edge.)
+    ¿Quieres abrir UmaPatcher Edge y actualizar?
+    Nota: El autoactualizador requiere UmaPatcher Edge v1.5.0+.
 
 updating_dialog:
   title: "Actualizando"

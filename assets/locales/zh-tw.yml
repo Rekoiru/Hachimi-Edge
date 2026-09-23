@@ -50,7 +50,8 @@ menu:
   tl_check_for_updates: "\uf0aa 檢查翻譯更新"
   tl_check_for_updates_pedantic: "\uf0aa 修复翻译"
   addon_check_for_updates_pedantic: "\uf0aa 修复插件翻译"
-  dump_localize_dict: "導出 localize dict"
+  dump_localize_dict: "\uf019 導出 localize dict"
+  dump_meta_file: "\uf019 導出 meta"
   danger_zone_heading: "\uf071 危險區域"
   danger_zone_warning: "更改這些選項可能會導致遊戲異常，請小心使用！"
   soft_restart: "\uf021 軟重啟"
@@ -59,13 +60,20 @@ menu:
 
 notification:
   saved_localize_dump: "保存至 localize_dump.json"
+  saved_meta_dump: "保存至 meta_dump"
   config_reloaded: "已重新載入設置。"
   config_saved: "已保存設置。"
   localized_data_reloaded: "已重新載入翻譯資料。"
   checking_for_tl_updates: "檢查翻譯更新"
+  checking_for_tlmod_updates: "檢查翻譯插件更新"
   no_tl_updates: "沒有可用的翻譯更新。"
+  no_tlmod_updates: "沒有可用的翻譯插件更新。"
+  nothing_to_repair: "所有文件似乎都正常。"
+  checking_tl_integrity: "正在檢查翻譯完整性..."
+  checking_tlmod_integrity: "正在檢查翻譯插件完整性..."
   update_failed: "更新失敗: %{reason}"
   update_completed: "更新完成。"
+  mod_update_completed: "插件更新完成。"
   errors_during_update: "更新時發生 %{count} 個錯誤，請確認日誌以獲取更多資訊。"
   checking_for_updates: "檢查更新"
   no_updates: "無可用的更新。"
@@ -163,7 +171,7 @@ config_editor:
   hide_ingame_ui_hotkey: "隱藏遊戲內 UI 快捷鍵"
   hide_ingame_ui_hotkey_info: >-
     此選項允許使用快捷鍵切換遊戲內介面（UI）的顯示。
-    Android 端，您需要雙擊「音量上鍵」，或連續三次點擊螢幕右上角。
+    Android 端，可連續三次點擊螢幕右上角。
     對於配備鍵盤的 PC/Android 裝置，預設按鍵為 Insert，並可在 GUI 或設定檔中進行更改。
   menu_open_key: "選單開啟熱鍵"
   menu_open_key_set: "按下按鍵進行設定"
@@ -195,10 +203,10 @@ update_prompt_dialog:
     目前有可用的更新 (%{version})，是否要安裝？
     遊戲將重新啟動以套用更新內容。
   android_content: |
-    檢測到 Hachimi Edge 的新版本 (%{version})。是否更新？
+    檢測到 Hachimi Edge 的新版本 (%{version})。
 
-    點擊「是」將跳轉至 UmaPatcher Edge，在其中重新為當前遊戲補丁以更新 Hachimi。
-    (無需重新下載完整遊戲文件或 APK，重新為當前遊戲版本的 APK 補丁並安裝即可，UmaPatcher Edge 將自動下載最新版本的 Hachimi Edge。)
+    是否要打開 UmaPatcher Edge 以開始更新？
+    注意：自動更新功能需要 UmaPatcher Edge v1.5.0+。
 
 updating_dialog:
   title: "更新中"

@@ -49,33 +49,39 @@ menu:
   reload_localized_data: "\uf021 Перезагрузить данные локализации"
   tl_check_for_updates: "\uf0aa Проверить обновления переводов"
   tl_check_for_updates_pedantic: "\uf0aa Проверить обновления переводов (принудительно)"
-  addon_check_for_updates_pedantic: "\uf0aa Repair translations (addons)"
-  dump_localize_dict: "Выгрузить данные localize_dict"
+  addon_check_for_updates_pedantic: "\uf0aa Восстановить переводы (аддоны)"
+  dump_localize_dict: "\uf019 Выгрузить данные localize_dict"
+  dump_meta_file: "\uf019 Выгрузить meta"
   danger_zone_heading: "\uf071 Зона опасности"
   danger_zone_warning: "Эти опции могут нести за собой непредвиденные последствия для игры. Используйте их с осторожностью!"
   soft_restart: "\uf021 Мягкая перезагрузка"
   open_in_game_browser: "\uf0ac Открыть внутриигровой браузер"
   toggle_game_ui: "\uf06e Скрыть/показать интерфейс игры"
-  discord_rpc: "Discord RPC"
 
 notification:
   saved_localize_dump: "Сохранено в localize_dump.json"
+  saved_meta_dump: "Сохранено в meta_dump"
   config_reloaded: "Настройки перезагружены."
   config_saved: "Настройки сохранены."
   config_error: "Файл настроек поврежден. Возврат к значениям по умолчанию..."
   localized_data_reloaded: "Данные локализации перезагружены."
   checking_for_tl_updates: "Проверка обновлений переводов..."
+  checking_for_tlmod_updates: "Проверка обновлений переводов..."
   no_tl_updates: "Нет доступных обновлений переводов."
+  no_tlmod_updates: "Нет доступных переводов..."
+  nothing_to_repair: "Все файлы в порядке."
+  checking_tl_integrity: "Проверка целостности переводов..."
+  checking_tlmod_integrity: "Проверка целостности переводов..."
   update_failed: "Обновление не удалось: %{reason}"
   update_completed: "Обновление завершено."
-  mod_update_completed: "Addon update completed."
+  mod_update_completed: "Обновление аддонов завершено."
   errors_during_update: "Во время обновления произошли ошибки (%{count}). Проверьте журнал для подробностей."
   checking_for_updates: "Проверка обновлений..."
   no_updates: "Нет доступных обновлений."
-  press_to_set_menu_key: "Press a key in the game window to set the open-menu hotkey."
-  menu_open_key_set: "Open-menu hotkey set to %{key}"
+  press_to_set_menu_key: "Нажмите клавишу в игровом окне, чтобы установить горячую клавишу открытия меню."
+  menu_open_key_set: "Горячая клавиша открытия меню установлена: %{key}"
   ipc_softreset_exec: "IPC: выполнена удаленная мягкая перезагрузка"
-  asset_mismatch: "Some assets have been disabled due to an update. Check the logs for details."
+  asset_mismatch: "Часть ресурсов была отключена из-за обновления. Подробности в журнале."
 
 first_time_setup:
   title: "Первоначальная настройка"
@@ -188,7 +194,7 @@ config_editor:
     На PC или Android c клавиатурой, по умолчанию это кнопка Insert, и её можно сменить в настройках.
   discord_rpc: "Discord RPC"
   menu_open_key: "Кнопка открытия меню"
-  menu_open_key_set: "Press to set"
+  menu_open_key_set: "Нажмите для установки"
   msaa: "MSAA"
   render_scale: "Масштаб рендера"
   aniso_level: "Анизотропная фильтрация"
@@ -220,10 +226,10 @@ update_prompt_dialog:
     Доступна новая версия Hachimi Edge (%{version}). Хотите её установить?
     Игра перезапустится, чтобы применить изменения.
   android_content: |
-    Доступна новая версия Hachimi Edge (%{version}).
+    Доступна новая версия Hachimi Edge (%{version})!
 
-    Нажмите Да, чтобы открыть UmaPatcher Edge, затем пропатчите игру, как обычно.
-    Заново скачивать игру или APK не требуется.
+    Хотите открыть UmaPatcher Edge, чтобы начать обновление?
+    Примечание: Автоматическое обновление требует UmaPatcher Edge v1.5.0+.
 
 updating_dialog:
   title: "Обновление"
@@ -266,26 +272,6 @@ key_names:
   alt: "Alt"
   ctrl: "Ctrl"
   shift: "Shift"
-  dpad_up: "Крестовина вверх"
-  dpad_down: "Крестовина вниз"
-  dpad_left: "Крестовина влево"
-  dpad_right: "Крестовина вправо"
-  volume_up: "Громкость вверх"
-  volume_down: "Громкость вниз"
-  copy: "Copy"
-  cut: "Cut"
-  paste: "Paste"
-  semicolon: ";"
-  comma: ","
-  backslash: "\\"
-  slash: "/"
-  left_bracket: "["
-  right_bracket: "]"
-  grave: "`"
-  minus: "-"
-  period: "."
-  plus: "+"
-  equals: "="
   numpad_0: "Numpad 0"
   numpad_1: "Numpad 1"
   numpad_2: "Numpad 2"

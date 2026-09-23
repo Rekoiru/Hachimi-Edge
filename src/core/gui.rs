@@ -13,6 +13,7 @@ use egui_scale::EguiScale;
 use fnv::FnvHashSet;
 use once_cell::sync::{Lazy, OnceCell};
 use rust_i18n::t;
+use size::{Base, Size, Style};
 use chrono::{Utc, Datelike};
 
 use crate::il2cpp::{
@@ -1045,6 +1046,21 @@ impl Gui {
                                 })
                             }
                         }
+                        #[cfg(target_os = "android")]
+                        if hachimi.config.load().translator_mode {
+                            if ui.button(t!("menu.dump_meta_file")).clicked() {
+                                Thread::main_thread().schedule(|| {
+                                    let meta = utils::get_meta_path();
+                                    let meta_path = Hachimi::instance().get_data_path("meta_dump");
+                                    let mut gui = Gui::instance().unwrap().lock().unwrap();
+                                    if let Err(e) = std::fs::copy(&meta, &meta_path) {
+                                        gui.show_notification(&e.to_string());
+                                    } else {
+                                        gui.show_notification(&t!("notification.saved_meta_dump"));
+                                    }
+                                })
+                            }
+                        }
                         ui.separator();
 
                         let plugin_items = get_plugin_menu_items();
@@ -1418,9 +1434,29 @@ impl Gui {
         let progress = Hachimi::instance().tl_updater.progress().unwrap_or_else(|| {
             // Assume that update is complete
             self.update_progress_visible = false;
-            tl_repo::UpdateProgress::new(1, 1)
+            tl_repo::UpdateProgress::new(1, 1, tl_repo::UpdatePhase::Checking)
         });
         let ratio = progress.current as f32 / progress.total as f32;
+
+        let size_text = if matches!(
+            progress.phase,
+            tl_repo::UpdatePhase::Downloading | tl_repo::UpdatePhase::Extracting
+        ) {
+            let fmt = |n: usize| {
+                Size::from_bytes(n)
+                    .format()
+                    .with_base(Base::Base10)
+                    .with_style(Style::Abbreviated)
+                    .to_string()
+            };
+            Some(if progress.total > 0 {
+                format!("{}/{}", fmt(progress.current), fmt(progress.total))
+            } else {
+                fmt(progress.current)
+            })
+        } else {
+            None
+        };
 
         let y_pos = if cfg!(target_os = "android") {
             46.0 * scale
@@ -1449,7 +1485,7 @@ impl Gui {
                         |ui| {
                             ui.label(
                                 egui::RichText::new(format!("{:.1}%", ratio * 100.0))
-                                    .color(self.config.ui_text_color),
+                                .color(self.config.ui_text_color),
                             );
                         },
                     );
@@ -1461,6 +1497,13 @@ impl Gui {
                     .desired_width(bar_width)
                     .fill(self.config.ui_accent_color),
                 );
+                if let Some(text) = &size_text {
+                    ui.label(
+                        egui::RichText::new(text)
+                        .font(egui::FontId::proportional(11.0 * scale))
+                        .color(self.config.ui_text_color),
+                    );
+                }
                 ui.label(
                     egui::RichText::new(t!("tl_updater.warning"))
                     .font(egui::FontId::proportional(10.0 * scale)),
