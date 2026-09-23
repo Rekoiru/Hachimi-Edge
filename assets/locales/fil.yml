@@ -148,6 +148,7 @@ config_editor:
     Toolkit. Kung walang tumatakbong server, walang karagdagang pag-translate ang mangyayari at maaaring
     maapektuhan ang gameplay. Paki-disable ang opsyong ito kung wala kang available na translation server.
   auto_translate_ui: "Awtomatikong i-translate ang UI (BAKA MASIRA ANG MGA UI)"
+  target_fps_unfocused: "Target FPS kung hindi aktibo ang window"
   virtual_resolution_multiplier: "Multiplier ng virtual resolution"
   ui_scale: "Laki ng UI"
   gui_scale: "Laki ng Overlay"
@@ -209,6 +210,7 @@ config_editor:
   race_stat_hud_landscapeui_portrait: "I-adjust ang Race Stat HUD para sa Landscape UI"
   race_stat_hud_draggable: "Gawing draggable ang Race Stat HUD"
   race_stat_hud_draggable_save: "I-save ang posisyon ng na-drag na Race Stat HUD"
+  race_stat_hud_resizable: "Gawing resizable ang Race Stat HUD"
   disable_tap_effect: "I-disable ang particle effect sa pag-tap"
   race_playback_slider: "Ipakita ang slider sa Playback ng Karera"
   race_playback_button: "Playback ng karera - Ipakita ang pause/resume button"

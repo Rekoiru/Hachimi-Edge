@@ -77,6 +77,9 @@ pub struct Hachimi {
     pub target_fps: AtomicI32,
 
     #[cfg(target_os = "windows")]
+    pub target_fps_unfocused: AtomicI32,
+
+    #[cfg(target_os = "windows")]
     pub vsync_count: AtomicI32,
 
     #[cfg(target_os = "windows")]
@@ -173,6 +176,9 @@ impl Hachimi {
             template_parser: template::Parser::new(&template_filters::LIST),
 
             target_fps: AtomicI32::new(config.target_fps.unwrap_or(-1)),
+
+            #[cfg(target_os = "windows")]
+            target_fps_unfocused: AtomicI32::new(config.windows.target_fps_unfocused.unwrap_or(-1)),
 
             #[cfg(target_os = "windows")]
             vsync_count: AtomicI32::new(config.windows.vsync_count),
@@ -823,6 +829,8 @@ pub struct Config {
     pub race_stat_hud_draggable: bool,
     #[serde(default)]
     pub race_stat_hud_draggable_save: bool,
+    #[serde(default)]
+    pub race_stat_hud_resizable: bool,
     #[serde(default = "Config::default_race_stat_hud_drag_x")]
     pub race_stat_hud_drag_x: f32,
     #[serde(default = "Config::default_race_stat_hud_drag_y")]
