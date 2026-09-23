@@ -627,9 +627,11 @@ impl Gui {
         let mut fonts = egui::FontDefinitions::default();
         let proportional_fonts = fonts.families.get_mut(&egui::FontFamily::Proportional).unwrap();
 
+        add_font!(fonts, proportional_fonts, "FontAwesome.otf");
         add_font!(fonts, proportional_fonts, "Inter_24pt-Regular.ttf");
         add_font!(fonts, proportional_fonts, "AlibabaPuHuiTi-3-45-Light.otf");
-        add_font!(fonts, proportional_fonts, "FontAwesome.otf");
+        add_font!(fonts, proportional_fonts, "MPLUS1-Regular.ttf");
+        add_font!(fonts, proportional_fonts, "Pretendard-Regular.ttf");
 
         fonts
     }
@@ -3085,6 +3087,8 @@ impl Window for LicenseWindow {
                 ui.group(|ui| {
                     ui.label(t!("license.font_inter"));
                     ui.label(t!("license.font_font_awesome"));
+                    ui.label(t!("license.font_m_plus_1"));
+                    ui.label(t!("license.font_pretendard"));
                 });
 
                 ui.add_space(4.0);
