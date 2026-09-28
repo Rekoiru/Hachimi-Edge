@@ -75,6 +75,8 @@ pub mod DialogSupportCardDetail;
 pub mod DialogOptionHome;
 pub mod StoryTimelineLiveStreamingClipData;
 pub mod LiveStreamingCommentScriptableObject;
+pub mod PartsCommonHeaderTitle;
+pub mod PartsSingleModeHeaderTitle;
 
 #[cfg(target_os = "windows")]
 pub mod SceneManager;
@@ -161,6 +163,8 @@ pub fn init() {
     DialogSupportCardDetail::init(image);
     DialogOptionHome::init(image);
     LiveStreamingCommentScriptableObject::init(image);
+    PartsCommonHeaderTitle::init(image);
+    PartsSingleModeHeaderTitle::init(image);
     
     #[cfg(target_os = "windows")]
     {
