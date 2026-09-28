@@ -2337,10 +2337,6 @@ impl ConfigEditor {
                 });
                 ui.end_row();
 
-                ui.label(t!("config_editor.skill_info_dialog"));
-                ui.checkbox(&mut config.skill_info_dialog, "");
-                ui.end_row();
-
                 ui.label(t!("config_editor.homescreen_bgseason"));
                 Gui::run_combo(ui, "homescreen_bgseason", &mut config.homescreen_bgseason, &[
                     (BgSeason::None, &t!("default")),
@@ -2486,8 +2482,13 @@ impl Window for ConfigEditor {
                             widgets.active.corner_radius = egui::CornerRadius::ZERO;
 
                             for (tab, label) in ConfigEditorTab::display_list() {
-                                if ui.selectable_label(self.current_tab == tab, label.as_ref()).clicked() {
+                                let is_selected = self.current_tab == tab;
+                                let res = ui.selectable_label(is_selected, label.as_ref());
+                                if res.clicked() {
                                     self.current_tab = tab;
+                                }
+                                if is_selected {
+                                    res.scroll_to_me(Some(egui::Align::Center));
                                 }
                             }
                         });

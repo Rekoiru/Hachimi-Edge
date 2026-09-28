@@ -1028,9 +1028,6 @@ fn open_hachimi_settings_dialog() {
             if let Some(val) = get_toggle_value_by_name("hachimi_live_theater_allow_same_chara") {
                 config.live_theater_allow_same_chara = val;
             }
-            if let Some(val) = get_toggle_value_by_name("hachimi_skill_info_dialog") {
-                config.skill_info_dialog = val;
-            }
             if let Some(val) = get_toggle_value_by_name("hachimi_disable_skill_name_translation") {
                 config.disable_skill_name_translation = val;
             }
@@ -1775,7 +1772,6 @@ unsafe fn init_settings_dialog_layout(parent_rt: *mut Il2CppObject) {
     add_slider(parent_rt, "hachimi_story_tcps_multiplier", "config_editor.story_text_speed_multiplier", config.story_tcps_multiplier * 10.0, 1.0, 100.0, false);
     add_toggle(parent_rt, "hachimi_force_allow_dynamic_camera", "config_editor.force_allow_dynamic_camera", config.force_allow_dynamic_camera);
     add_toggle(parent_rt, "hachimi_live_theater_allow_same_chara", "config_editor.live_theater_allow_same_chara", config.live_theater_allow_same_chara);
-    add_toggle(parent_rt, "hachimi_skill_info_dialog", "config_editor.skill_info_dialog", config.skill_info_dialog);
     add_toggle(parent_rt, "hachimi_disable_skill_name_translation", "config_editor.disable_skill_name_translation", config.disable_skill_name_translation);
 
     let physics_idx = match config.physics_update_mode {

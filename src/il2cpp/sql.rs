@@ -139,67 +139,6 @@ impl CharacterData {
     }
 }
 
-// untranslated skill info
-#[derive(Default)]
-pub struct SkillInfo {
-    pub skill_names: FnvHashMap<i32, String>,
-    pub skill_descs: FnvHashMap<i32, String>,
-}
-
-impl SkillInfo {
-    pub fn load_from_db() -> Self {
-        let mut skill_names = FnvHashMap::default();
-        let mut skill_descs = FnvHashMap::default();
-
-        let db_path = get_masterdb_path();
-        let conn = Connection::new();
-
-        if Connection::Open(conn, db_path.to_il2cpp_string(), std::ptr::null_mut(), std::ptr::null_mut(), 0) {
-            // category 47 = names, 48 = descriptions
-            let sql = "SELECT \"index\", text, id FROM text_data WHERE id IN (47, 48)";
-            let query = Connection::Query(conn, sql.to_il2cpp_string());
-
-            if !query.is_null() {
-                while Query::Step(query) {
-                    let index = Query::GetInt(query, 0);
-                    let text_ptr = Query::GetText(query, 1);
-                    let category = Query::GetInt(query, 2);
-
-                    if let Some(text) = unsafe { text_ptr.as_ref() }.map(|s| s.as_utf16str().to_string()) {
-                        match category {
-                            47 => skill_names.insert(index, text),
-                            48 => skill_descs.insert(index, text),
-                            _ => None,
-                        };
-                    }
-                }
-                Query::Dispose(query);
-            }
-            Connection::CloseDB(conn);
-        }
-
-        SkillInfo { skill_names, skill_descs }
-    }
-
-    pub fn get_name(&self, id: i32) -> String {
-        if let Some(name) = self.skill_names.get(&id) {
-            return name.clone();
-        }
-
-        // unknown skill name
-        "???".to_string()
-    }
-
-    pub fn get_desc(&self, id: i32) -> String {
-        if let Some(desc) = self.skill_descs.get(&id) {
-            return desc.clone();
-        }
-
-        // unknown skill desc
-        "???".to_string()
-    }
-}
-
 // All of this add column/param stuff could be simplified to two hash maps, but that's overkill.
 pub trait SelectQueryState {
     /// Adds a column to the query.

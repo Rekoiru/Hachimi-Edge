@@ -4,7 +4,7 @@ use fnv::{FnvHashMap, FnvHashSet};
 use once_cell::sync::OnceCell;
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
-use crate::{core::{plugin_api::Plugin, updater}, gui_impl, hachimi_impl, il2cpp::{self, hook::umamusume::{CySpringController::SpringUpdateMode, GameSystem}, sql::{CharacterData, SkillInfo}}};
+use crate::{core::{plugin_api::Plugin, updater}, gui_impl, hachimi_impl, il2cpp::{self, hook::umamusume::{CySpringController::SpringUpdateMode, GameSystem}, sql::CharacterData}};
 
 use super::{game::{Game, Region}, ipc, plurals, template, template_filters, tl_repo, utils, Error, Interceptor};
 
@@ -31,8 +31,6 @@ pub struct Hachimi {
 
     // Character data
     pub chara_data: ArcSwap<CharacterData>,
-    // Untranslated skill info
-    pub skill_info: ArcSwap<SkillInfo>,
 
     // Shared properties
     pub game: Game,
@@ -122,7 +120,6 @@ impl Hachimi {
 
             // Same with these
             chara_data: ArcSwap::default(),
-            skill_info: ArcSwap::default(),
 
             game,
             template_parser: template::Parser::new(&template_filters::LIST),
@@ -211,14 +208,6 @@ impl Hachimi {
             let data = CharacterData::load_from_db();
             self.chara_data.store(Arc::new(data));
             info!("Character database loaded successfully.");
-        }
-    }
-
-    pub fn init_skill_info(&self) {
-        if self.skill_info.load().skill_names.is_empty() {
-            let data = SkillInfo::load_from_db();
-            self.skill_info.store(Arc::new(data));
-            info!("Skill info loaded successfully.");
         }
     }
 
@@ -399,8 +388,6 @@ pub struct Config {
     pub live_theater_allow_same_chara: bool,
     #[serde(default = "Config::default_live_vocals_swap")]
     pub live_vocals_swap: [i32; 6],
-    #[serde(default)]
-    pub skill_info_dialog: bool,
     #[serde(default)]
     pub homescreen_bgseason: crate::il2cpp::hook::umamusume::TimeUtil::BgSeason,
     pub sugoi_url: Option<String>,
