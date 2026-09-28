@@ -620,11 +620,43 @@ pub struct CommonOverrides {
     pub text_anchor: Option<i32>,
     pub pivot_x: Option<f32>,
     pub pivot_y: Option<f32>,
+    pub anchor_min_x: Option<f32>,
+    pub anchor_min_y: Option<f32>,
+    pub anchor_max_x: Option<f32>,
+    pub anchor_max_y: Option<f32>,
+    pub offset_min_x: Option<f32>,
+    pub offset_min_y: Option<f32>,
+    pub offset_max_x: Option<f32>,
+    pub offset_max_y: Option<f32>,
     pub sizedelta_x: Option<f32>,
     pub sizedelta_y: Option<f32>,
+    pub anchored_position_x: Option<f32>,
+    pub anchored_position_y: Option<f32>,
     pub position_offset_x: Option<f32>,
     pub position_offset_y: Option<f32>,
     pub text_override: Option<String>,
+}
+
+impl CommonOverrides {
+    pub fn has_transform_overrides(&self) -> bool {
+        self.pivot_x.is_some()
+            || self.pivot_y.is_some()
+            || self.anchored_position_x.is_some()
+            || self.anchored_position_y.is_some()
+            || self.position_offset_x.is_some()
+            || self.position_offset_y.is_some()
+            || self.sizedelta_x.is_some()
+            || self.sizedelta_y.is_some()
+            || self.anchor_min_x.is_some()
+            || self.anchor_min_y.is_some()
+            || self.anchor_max_x.is_some()
+            || self.anchor_max_y.is_some()
+            || self.offset_min_x.is_some()
+            || self.offset_min_y.is_some()
+            || self.offset_max_x.is_some()
+            || self.offset_max_y.is_some()
+            || self.font_size.is_some()
+    }
 }
 
 #[derive(Deserialize, Serialize, Clone, Default)]

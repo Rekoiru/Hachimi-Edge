@@ -27,6 +27,9 @@ impl_addr_wrapper_fn!(GetChild, GETCHILD_ADDR, *mut Il2CppObject, this: *mut Il2
 static mut GET_LOCALSCALE_ADDR: usize = 0;
 impl_addr_wrapper_fn!(get_localScale, GET_LOCALSCALE_ADDR, Vector3_t, this: *mut Il2CppObject);
 
+static mut GET_LOCALPOSITION_ADDR: usize = 0;
+impl_addr_wrapper_fn!(get_localPosition, GET_LOCALPOSITION_ADDR, Vector3_t, this: *mut Il2CppObject);
+
 static mut FIND_ADDR: usize = 0;
 impl_addr_wrapper_fn!(Find, FIND_ADDR, *mut Il2CppObject, this: *mut Il2CppObject, n: *mut Il2CppString);
 
@@ -53,6 +56,7 @@ pub fn init(UnityEngine_CoreModule: *const Il2CppImage) {
         GET_CHILDCOUNT_ADDR = get_method_addr(Transform, c"get_childCount", 0);
         GETCHILD_ADDR = get_method_addr(Transform, c"GetChild", 1);
         GET_LOCALSCALE_ADDR = get_method_addr(Transform, c"get_localScale", 0);
+        GET_LOCALPOSITION_ADDR = get_method_addr(Transform, c"get_localPosition", 0);
         FIND_ADDR = get_method_addr(Transform, c"Find", 1);
         SET_PARENT_ADDR = get_method_addr(Transform, c"SetParent", 2);
         SET_AS_FIRST_SIBLING_ADDR = get_method_addr(Transform, c"SetAsFirstSibling", 0);
