@@ -188,7 +188,6 @@ config_editor:
   aniso_level: "Filter Anisotropik"
   live_vocals_swap: "Tukar vokal konser"
   live_vocals_swap_character_n: "Karakter %{index}"
-  skill_info_dialog: "Dialog info skill kustom"
   homescreen_bgseason: "Latar musim di beranda"
   shadow_resolution: "Resolusi bayangan"
 

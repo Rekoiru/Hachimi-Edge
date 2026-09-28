@@ -200,7 +200,6 @@ config_editor:
   aniso_level: "Анизотропная фильтрация"
   live_vocals_swap: "Замена концерт-голосов"
   live_vocals_swap_character_n: "Персонаж %{index}"
-  skill_info_dialog: "Кастомное окно свойств навыков"
   homescreen_bgseason: "Время года на домашнем экране"
   shadow_resolution: "Разрешение теней"
 

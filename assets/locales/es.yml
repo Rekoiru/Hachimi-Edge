@@ -203,7 +203,6 @@ config_editor:
   aniso_level: "Filtrado anisotrópico"
   live_vocals_swap: "Cambiar vocalistas"
   live_vocals_swap_character_n: "Personaje %{index}"
-  skill_info_dialog: "Ver datos de habilidades (GUI)"
   homescreen_bgseason: "Estación en el menú principal"
   shadow_resolution: "Resolución de las sombras"
 

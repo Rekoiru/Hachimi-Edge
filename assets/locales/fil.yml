@@ -162,7 +162,6 @@ config_editor:
   menu_open_key: "Hotkey ng pagbukas ng menu"
   menu_open_key_set: "Itakda"
   live_vocals_swap: "Pagpalit ng Vocals sa Live"
-  skill_info_dialog: "Custom na dialog ng skill info"
   homescreen_bgseason: "Panahon ng Homescreen Background"
   shadow_resolution: "Resolution ng Shadows"
 

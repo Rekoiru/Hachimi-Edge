@@ -192,7 +192,6 @@ config_editor:
   aniso_level: "Filtragem Anisotrópica"
   live_vocals_swap: "Vozes dos shows"
   live_vocals_swap_character_n: "Personagem %{index}"
-  skill_info_dialog: "Caixa de informações das habilidades personalizada"
   homescreen_bgseason: "Estação da tela de início"
   shadow_resolution: "Resolução das Sombras"
 

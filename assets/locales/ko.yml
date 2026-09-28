@@ -177,7 +177,6 @@ config_editor:
   aniso_level: "Anisotropic Filtering"
   live_vocals_swap: "Live Vocals Swap"
   live_vocals_swap_character_n: "Character %{index}"
-  skill_info_dialog: "Custom skill info dialog"
   homescreen_bgseason: "Homescreen Background Season"
   shadow_resolution: "Shadow Resolution"
 
