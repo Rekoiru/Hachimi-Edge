@@ -235,6 +235,24 @@ impl Updater {
         true
     }
 
+    // get the content length or return None if nothing
+    fn fetch_zip_content_length(zip_url: &str) -> Option<usize> {
+        let agent = ureq::Agent::new_with_config(ureq_config());
+        let res = match agent.head(zip_url).call() {
+            Ok(r) => r,
+            Err(_) => {
+                return None;
+            }
+        };
+
+        let headers = res.headers();
+
+        headers.get("Content-Length")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|s| s.parse::<usize>().ok())
+            .filter(|&size| size > 0)
+    }
+
     fn check_for_updates_internal(&self, pedantic: bool) -> Result<(), Error> {
         // Prevent multiple update checks running at the same time
         let Ok(_guard) = self.update_check_mutex.try_lock() else {
@@ -364,6 +382,7 @@ impl Updater {
         }
 
         if !update_files.is_empty() {
+
             // Determine download strategy
             let will_use_zip = Self::should_use_zip_download(
                 update_files.len(),
@@ -372,8 +391,13 @@ impl Updater {
                 &index.base_url
             );
 
-            // Calculate actual download size
-            let actual_download_size = if will_use_zip { total_size } else { update_size };
+            // Calculate actual download size — prefer real ZIP Content-Length when available
+            let mut actual_download_size = if will_use_zip { total_size } else { update_size };
+            if will_use_zip {
+                if let Some(zip_size) = Self::fetch_zip_content_length(&index.zip_url) {
+                    actual_download_size = zip_size;
+                }
+            }
 
             // Store update info with all relevant sizes
             self.new_update.store(Arc::new(Some(UpdateInfo {
@@ -541,13 +565,19 @@ impl Updater {
         }
 
         if !update_files.is_empty() {
+
             let will_use_zip = Self::should_use_zip_download(
                 update_files.len(),
                 update_size,
                 total_size,
                 &mod_index.base_url,
             );
-            let actual_download_size = if will_use_zip { total_size } else { update_size };
+            let mut actual_download_size = if will_use_zip { total_size } else { update_size };
+            if will_use_zip {
+                if let Some(zip_size) = Self::fetch_zip_content_length(&mod_index.zip_url) {
+                    actual_download_size = zip_size;
+                }
+            }
 
             self.new_mod_update.store(Arc::new(Some(ModUpdateInfo {
                 base_url: mod_index.base_url,
@@ -637,6 +667,7 @@ impl Updater {
                 if let Err(e) = self.clone().run_internal() {
                     error!("{}", e);
                     self.progress.store(Arc::new(None));
+                    Hachimi::instance().load_localized_data();
                     if let Some(mutex) = Gui::instance() {
                         mutex.lock().unwrap().show_notification(&t!("notification.update_failed", reason = e.to_string()));
                     }
@@ -733,6 +764,7 @@ impl Updater {
                 if let Err(e) = self.clone().run_mod_internal() {
                     error!("{}", e);
                     self.progress.store(Arc::new(None));
+                    Hachimi::instance().load_localized_data();
                     if let Some(mutex) = Gui::instance() {
                         mutex.lock().unwrap().show_notification(&t!("notification.update_failed", reason = e.to_string()));
                     }
@@ -849,20 +881,36 @@ impl Updater {
                             if let Some(parent) = Path::new(&file_path).parent() {
                                 fs::create_dir_all(parent)?;
                             }
-                            let mut file = fs::File::create(&file_path)?;
-                            let res = job.agent.get(&url).call()?;
+                            let mut part_path = file_path.clone().into_os_string();
+                            part_path.push(".part");
+                            let part_path = PathBuf::from(part_path);
 
-                            http::download_file_buffered(res, &mut file, &mut job.buffer, |bytes| {
-                                job.hasher.update(bytes);
-                                let prev_size = current_bytes_clone.fetch_add(bytes.len(), atomic::Ordering::SeqCst);
-                                updater.progress.store(Arc::new(Some(UpdateProgress::new(prev_size + bytes.len(), total_size, UpdatePhase::Downloading))));
-                            })?;
+                            let download = (|| -> Result<(), Error> {
+                                let mut file = fs::File::create(&part_path)?;
+                                let res = job.agent.get(&url).call()?;
+
+                                http::download_file_buffered(res, &mut file, &mut job.buffer, |bytes| {
+                                    job.hasher.update(bytes);
+                                    let prev_size = current_bytes_clone.fetch_add(bytes.len(), atomic::Ordering::SeqCst);
+                                    updater.progress.store(Arc::new(Some(UpdateProgress::new(prev_size + bytes.len(), total_size, UpdatePhase::Downloading))));
+                                })
+                            })();
 
                             let hash = job.hasher.finalize().to_hex().to_string();
+                            job.hasher.reset();
+
+                            if let Err(e) = download {
+                                let _ = fs::remove_file(&part_path);
+                                return Err(e);
+                            }
                             if hash != repo_file.hash {
+                                let _ = fs::remove_file(&part_path);
                                 return Err(Error::FileHashMismatch(file_path.to_str().unwrap_or("").to_string()));
                             }
-                            job.hasher.reset();
+                            if let Err(e) = fs::rename(&part_path, &file_path) {
+                                let _ = fs::remove_file(&part_path);
+                                return Err(e.into());
+                            }
                             Ok(hash)
                         })();
 
@@ -915,25 +963,8 @@ impl Updater {
         let mut error_count = 0;
 
         {
-            let total_size_header = ureq::agent().head(&update_info.zip_url).call()
-                .ok()
-                .and_then(|res| {
-                    res.headers()
-                       .get("Content-Length")
-                       .and_then(|v| v.to_str().ok())
-                       .and_then(|s| s.parse::<usize>().ok())
-                });
-
-            let progress_total = match total_size_header {
-                Some(size) if size > 0 => {
-                    debug!("Using Content-Length from header for progress bar: {}", size);
-                    size
-                },
-                _ => {
-                    debug!("Server did not provide a valid Content-Length. Using fallback size from index: {}", update_info.size);
-                    update_info.size
-                }
-            };
+            // Use UpdateInfo.size for progress — already resolved to Content-Length in check phase
+            let progress_total = update_info.size;
 
             let downloaded = Arc::new(AtomicUsize::new(0));
             let self_clone = self.clone();
@@ -1025,7 +1056,11 @@ impl Updater {
                                 }
                             }
 
-                            let mut out_file = match fs::File::create(&path) {
+                            let mut part_path = path.clone().into_os_string();
+                            part_path.push(".part");
+                            let part_path = PathBuf::from(part_path);
+
+                            let mut out_file = match fs::File::create(&part_path) {
                                 Ok(file) => file,
                                 Err(_) => {
                                     non_fatal_error_count_clone.fetch_add(1, atomic::Ordering::SeqCst);
@@ -1033,12 +1068,14 @@ impl Updater {
                                 }
                             };
 
+                            let mut entry_ok = true;
                             loop {
                                 match zip_entry.read(&mut buffer) {
                                     Ok(0) => break,
                                     Ok(read_bytes) => {
                                         let data_slice = &buffer[..read_bytes];
                                         if out_file.write_all(data_slice).is_err() {
+                                            let _ = fs::remove_file(&part_path);
                                             *fatal_error_clone.lock().unwrap() = Some(Error::OutOfDiskSpace);
                                             stop_signal_clone.store(true, atomic::Ordering::Relaxed);
                                             return;
@@ -1049,21 +1086,33 @@ impl Updater {
                                     }
                                     Err(_) => {
                                         non_fatal_error_count_clone.fetch_add(1, atomic::Ordering::SeqCst);
+                                        entry_ok = false;
                                         break;
                                     }
                                 }
                             }
 
                             let hash = hasher.finalize().to_hex().to_string();
+                            hasher.reset();
+
+                            if !entry_ok {
+                                let _ = fs::remove_file(&part_path);
+                                continue;
+                            }
                             if hash != repo_file.hash {
                                 let path_str = path.to_str().unwrap_or("").to_string();
+                                let _ = fs::remove_file(&part_path);
                                 *fatal_error_clone.lock().unwrap() = Some(Error::FileHashMismatch(path_str));
                                 stop_signal_clone.store(true, atomic::Ordering::Relaxed);
                                 return;
                             }
+                            if fs::rename(&part_path, &path).is_err() {
+                                let _ = fs::remove_file(&part_path);
+                                non_fatal_error_count_clone.fetch_add(1, atomic::Ordering::SeqCst);
+                                continue;
+                            }
 
                             cached_files_clone.lock().unwrap().insert(repo_file.path.clone(), hash);
-                            hasher.reset();
                         }
                     }).unwrap();
                 handles.push(handle);
