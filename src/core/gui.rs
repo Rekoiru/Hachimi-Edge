@@ -118,6 +118,7 @@ const PIXELS_PER_POINT_RATIO: f32 = 3.0/1080.0;
 
 static INSTANCE: OnceCell<Mutex<Gui>> = OnceCell::new();
 static IS_CONSUMING_INPUT: AtomicBool = AtomicBool::new(false);
+static IS_EGUI_TYPING: atomic::AtomicBool = atomic::AtomicBool::new(false);
 static DISABLED_GAME_UIS: Lazy<Mutex<FnvHashSet<SendPtr>>> =
     Lazy::new(|| Mutex::new(FnvHashSet::default()));
 static PLUGIN_MENU_ITEMS: Lazy<Mutex<Vec<PluginMenuItem>>> = Lazy::new(|| Mutex::new(Vec::new()));
@@ -1534,6 +1535,10 @@ impl Gui {
 
     pub fn is_consuming_input_atomic() -> bool {
         IS_CONSUMING_INPUT.load(atomic::Ordering::Relaxed)
+    }
+
+    pub fn is_egui_typing_atomic() -> bool {
+        IS_EGUI_TYPING.load(atomic::Ordering::Relaxed) && Self::is_consuming_input_atomic()
     }
 
     pub fn set_consuming_input(&mut self, val: bool) {

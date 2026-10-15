@@ -1,22 +1,28 @@
-use std::{os::raw::c_uint, ptr, sync::{atomic::{self, AtomicIsize}, Arc}};
+// LTS code base, with upstream window discovery, atomics and typing guard ported
+use std::{os::raw::c_uint, ptr, sync::{atomic::{self, AtomicBool, AtomicIsize, AtomicUsize}, Arc}};
 
-use windows::{core::w, Win32::{
+use windows::{core::BOOL, Win32::{
     Foundation::{HWND, LPARAM, LRESULT, WPARAM},
-    System::Threading::GetCurrentThreadId,
+    System::Threading::{GetCurrentProcessId, GetCurrentThreadId},
     UI::WindowsAndMessaging::{
-        CallNextHookEx, DefWindowProcW, FindWindowW, GetWindowLongPtrW, SetWindowsHookExW, UnhookWindowsHookEx,
-        GWLP_WNDPROC, HCBT_MINMAX, HHOOK, SW_RESTORE, WH_CBT, WM_CLOSE, WM_KEYDOWN, WM_SYSKEYDOWN, WNDPROC
+        CallNextHookEx, DefWindowProcW, EnumWindows, GetClassNameW, GetWindowThreadProcessId,
+        SetWindowsHookExW, UnhookWindowsHookEx,
+        HCBT_MINMAX, HHOOK, SW_RESTORE, WH_CBT, WM_CLOSE, WM_KEYDOWN, WM_SYSKEYDOWN, WNDPROC
     }
 }};
 
-use crate::{core::{game::Region, Gui, Hachimi}, il2cpp::{hook::{UnityEngine_CoreModule}, symbols::Thread}, windows::utils};
+use crate::{core::{Gui, Hachimi}, il2cpp::{hook::{UnityEngine_CoreModule}, symbols::Thread}, windows::utils};
 use rust_i18n::t;
 
 use super::{gui_impl::input, discord};
 
 static TARGET_HWND: AtomicIsize = AtomicIsize::new(0);
+static WNDPROC_ORIG: AtomicIsize = AtomicIsize::new(0);
+static WNDPROC_RECALL: AtomicUsize = AtomicUsize::new(0);
+static WND_HOOK_INIT_DONE: AtomicBool = AtomicBool::new(false);
+
 pub fn get_target_hwnd() -> HWND {
-    HWND(TARGET_HWND.load(atomic::Ordering::Relaxed) as *mut _)
+    HWND(TARGET_HWND.load(atomic::Ordering::Acquire) as *mut _)
 }
 
 static MENU_KEY_CAPTURE: atomic::AtomicBool = atomic::AtomicBool::new(false);
@@ -24,28 +30,44 @@ pub fn start_menu_key_capture() {
     MENU_KEY_CAPTURE.store(true, atomic::Ordering::Relaxed);
 }
 
-// Safety: only modified once on init
-static mut WNDPROC_ORIG: isize = 0;
-static mut WNDPROC_RECALL: usize = 0;
+fn find_game_window() -> HWND {
+    static FOUND_HWND: AtomicIsize = AtomicIsize::new(0);
+
+    extern "system" fn enum_proc(hwnd: HWND, _lparam: LPARAM) -> BOOL {
+        unsafe {
+            let mut pid = 0u32;
+            GetWindowThreadProcessId(hwnd, Some(&mut pid));
+            if pid != GetCurrentProcessId() {
+                return BOOL(1);
+            }
+
+            let mut class_name = [0u16; 32];
+            let len = GetClassNameW(hwnd, &mut class_name) as usize;
+            if len == 0 || String::from_utf16_lossy(&class_name[..len]) != "UnityWndClass" {
+                return BOOL(1);
+            }
+
+            FOUND_HWND.store(hwnd.0 as isize, atomic::Ordering::Release);
+            BOOL(0) // stop enumeration
+        }
+    }
+
+    FOUND_HWND.store(0, atomic::Ordering::Release);
+    unsafe {
+        let _ = EnumWindows(Some(enum_proc), LPARAM(0));
+        HWND(FOUND_HWND.load(atomic::Ordering::Acquire) as *mut _)
+    }
+}
+
 extern "system" fn wnd_proc(hwnd: HWND, umsg: c_uint, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
-    let Some(orig_fn) = (unsafe { std::mem::transmute::<isize, WNDPROC>(WNDPROC_ORIG) }) else {
+    let orig_addr = WNDPROC_ORIG.load(atomic::Ordering::Acquire);
+    let Some(orig_fn) = (unsafe { std::mem::transmute::<isize, WNDPROC>(orig_addr) }) else {
         return unsafe { DefWindowProcW(hwnd, umsg, wparam, lparam) };
     };
 
     match umsg {
         WM_KEYDOWN | WM_SYSKEYDOWN => {
             let current_key = wparam.0 as u16;
-
-            if current_key == 0x4B { // Virtual keycode for "K", see the get_key method on gui_impl/input.rs
-                let hotkey_vk = Hachimi::instance().config.load().windows.hide_ingame_ui_hotkey_bind;
-
-                if unsafe { windows::Win32::UI::Input::KeyboardAndMouse::GetKeyState(hotkey_vk as i32) < 0 } {
-                    if let Some(mut gui) = Gui::instance().map(|m| m.lock().unwrap()) {
-                        gui.set_consuming_input(false);
-                    }
-                    return LRESULT(0); 
-                }
-            }
 
             if MENU_KEY_CAPTURE.load(atomic::Ordering::Relaxed) {
                 MENU_KEY_CAPTURE.store(false, atomic::Ordering::Relaxed);
@@ -63,23 +85,39 @@ extern "system" fn wnd_proc(hwnd: HWND, umsg: c_uint, wparam: WPARAM, lparam: LP
                 });
                 return LRESULT(0);
             }
-            if current_key == Hachimi::instance().config.load().windows.menu_open_key {
-                let Some(mut gui) = Gui::instance().map(|m| m.lock().unwrap()) else {
-                    return unsafe { orig_fn(hwnd, umsg, wparam, lparam) };
-                };
 
-                gui.toggle_menu();
-                return LRESULT(0);
-            }else if current_key == Hachimi::instance().config.load().windows.hide_ingame_ui_hotkey_bind && Hachimi::instance().config.load().hide_ingame_ui_hotkey {
-                Thread::main_thread().schedule(Gui::toggle_game_ui);
+            // Don't fire hotkeys while the user is typing in a text field
+            if !Gui::is_egui_typing_atomic() {
+                if current_key == 0x4B { // Virtual keycode for "K", see the get_key method on gui_impl/input.rs
+                    let hotkey_vk = Hachimi::instance().config.load().windows.hide_ingame_ui_hotkey_bind;
+
+                    if unsafe { windows::Win32::UI::Input::KeyboardAndMouse::GetKeyState(hotkey_vk as i32) < 0 } {
+                        if let Some(mut gui) = Gui::instance().map(|m| m.lock().unwrap()) {
+                            gui.set_consuming_input(false);
+                        }
+                        return LRESULT(0);
+                    }
+                }
+
+                if current_key == Hachimi::instance().config.load().windows.menu_open_key {
+                    let Some(mut gui) = Gui::instance().map(|m| m.lock().unwrap()) else {
+                        return unsafe { orig_fn(hwnd, umsg, wparam, lparam) };
+                    };
+
+                    gui.toggle_menu();
+                    return LRESULT(0);
+                } else if current_key == Hachimi::instance().config.load().windows.hide_ingame_ui_hotkey_bind && Hachimi::instance().config.load().hide_ingame_ui_hotkey {
+                    Thread::main_thread().schedule(Gui::toggle_game_ui);
+                }
             }
         },
         WM_CLOSE => {
             if let Some(hook) = Hachimi::instance().interceptor.unhook(wnd_proc as *const () as _) {
-                unsafe { WNDPROC_RECALL = hook.orig_addr; }
+                WNDPROC_RECALL.store(hook.orig_addr, atomic::Ordering::Release);
                 Thread::main_thread().schedule(|| {
                     unsafe {
-                        let orig_fn = std::mem::transmute::<usize, WNDPROC>(WNDPROC_RECALL).unwrap();
+                        let recall = WNDPROC_RECALL.load(atomic::Ordering::Acquire);
+                        let orig_fn = std::mem::transmute::<usize, WNDPROC>(recall).unwrap();
                         orig_fn(get_target_hwnd(), WM_CLOSE, WPARAM(0), LPARAM(0));
                     }
                 });
@@ -128,33 +166,49 @@ extern "system" fn cbt_proc(ncode: i32, wparam: WPARAM, lparam: LPARAM) -> LRESU
 }
 
 pub fn init() {
+    let hwnd = find_game_window();
+    if hwnd.0 == ptr::null_mut() {
+        warn!("Game window not found yet, waiting for it to be created");
+        std::thread::spawn(|| {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(60);
+            loop {
+                std::thread::sleep(std::time::Duration::from_millis(100));
+                let hwnd = find_game_window();
+                if hwnd.0 != ptr::null_mut() {
+                    TARGET_HWND.store(hwnd.0 as isize, atomic::Ordering::Release);
+                    Thread::main_thread().schedule(|| {
+                        init_hwnd(get_target_hwnd());
+                    });
+                    return;
+                }
+                if std::time::Instant::now() >= deadline {
+                    error!("Timed out waiting for the game window");
+                    return;
+                }
+            }
+        });
+        return;
+    }
+    init_hwnd(hwnd);
+}
+
+fn init_hwnd(hwnd: HWND) {
+    if WND_HOOK_INIT_DONE.swap(true, atomic::Ordering::AcqRel) {
+        return;
+    }
+
     unsafe {
         let hachimi = Hachimi::instance();
-        let game = &hachimi.game;
 
-        let window_name = if game.region == Region::Japan && game.is_steam_release {
-            // lmao
-            w!("UmamusumePrettyDerby_Jpn")
-        }
-        else if game.region == Region::Taiwan {
-            w!("賽馬娘Pretty Derby")
-        }
-        else {
-            // global technically has "Umamusume" as its title but this api
-            // is case insensitive so it works. why am i surprised
-            w!("umamusume")
-        };
-        let hwnd = FindWindowW(w!("UnityWndClass"), window_name).unwrap_or_default();
-        if hwnd.0 == ptr::null_mut() {
-            error!("Failed to find game window");
-            return;
-        }
-        TARGET_HWND.store(hwnd.0 as isize, atomic::Ordering::Relaxed);
+        TARGET_HWND.store(hwnd.0 as isize, atomic::Ordering::Release);
 
         info!("Hooking WndProc");
-        let wnd_proc_addr = GetWindowLongPtrW(hwnd, GWLP_WNDPROC);
+        let wnd_proc_addr = windows::Win32::UI::WindowsAndMessaging::GetWindowLongPtrW(
+            hwnd,
+            windows::Win32::UI::WindowsAndMessaging::GWLP_WNDPROC
+        );
         match hachimi.interceptor.hook(wnd_proc_addr as _, wnd_proc as *const () as _) {
-            Ok(trampoline_addr) => WNDPROC_ORIG = trampoline_addr as _,
+            Ok(trampoline_addr) => WNDPROC_ORIG.store(trampoline_addr as isize, atomic::Ordering::Release),
             Err(e) => error!("Failed to hook WndProc: {}", e)
         }
 
@@ -170,8 +224,8 @@ pub fn init() {
 
         if hachimi.discord_rpc.load(atomic::Ordering::Relaxed) {
             if let Err(e) = discord::start_rpc() {
-                 error!("{}", e);
-             }
+                error!("{}", e);
+            }
         }
     }
 }
