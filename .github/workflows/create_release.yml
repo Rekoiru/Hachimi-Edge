@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     if: "!contains(github.event.head_commit.message, '[ci skip]')"
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
       - name: Cache Rust dependencies
         uses: swatinem/rust-cache@v2
 
@@ -79,10 +79,11 @@ jobs:
           EOF
 
       - name: Upload Windows binaries
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: windows
           path: |
+            build/blake3.json
             build/hachimi.dll
             build/hachimi_installer.exe
 
@@ -91,7 +92,7 @@ jobs:
     runs-on: ubuntu-latest
     if: "!contains(github.event.head_commit.message, '[ci skip]')"
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Get release version
@@ -103,7 +104,7 @@ jobs:
           echo "RELEASE_VERSION=v$VERSION" >> $GITHUB_ENV
 
       - name: Download all build artifacts
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           path: artifacts
 
@@ -113,7 +114,7 @@ jobs:
             git tag $LATEST_TAG
           fi
 
-          PREVIOUS_TAG=$(git describe --tags --abbrev=0 "${LATEST_TAG}^")
+          PREVIOUS_TAG=$(git describe --tags --abbrev=0 "${LATEST_TAG}^" 2>/dev/null || true)
           if [ -z "$PREVIOUS_TAG" ]; then
             PREVIOUS_TAG=$(git rev-list --max-parents=0 HEAD)
           fi
@@ -153,9 +154,10 @@ jobs:
           LATEST_TAG: ${{ env.RELEASE_VERSION }}
 
       - name: Upload binaries to a release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           body_path: CHANGELOG.md
+          target_commitish: ${{ github.sha }}
           files: |
             artifacts/android/*
             artifacts/windows/*
