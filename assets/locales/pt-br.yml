@@ -81,6 +81,9 @@ menu:
   discord_rpc: "Discord RPC"
   edit_excludes: "\uf040 Editar exceções"
   change_translation_repo: "\uf0c1 Mudar repositório de tradução"
+  shortcuts_heading: "\uf02e Atalhos"
+  no_shortcuts_saved: "Nenhum atalho salvo."
+  edit_shortcuts: "\uf040 Editar atalhos"
 
 notification:
   saved_localize_dump: "Exportado em localize_dump.json"
@@ -287,6 +290,8 @@ config_editor:
   aniso_level: "Filtragem Anisotrópica"
   live_vocals_swap: "Vozes dos shows"
   live_vocals_swap_character_n: "Personagem %{index}"
+  live_vocals_swap_concert: "Show"
+  live_vocals_swap_all_songs: "Todas as músicas"
   skill_info_dialog: "Caixa de informações das habilidades personalizada"
   homescreen_bgseason: "Estação da tela de início"
   shadow_resolution: "Resolução das sombras"
@@ -311,6 +316,13 @@ set_keybind:
   title: "Definir atalho"
   press_any_key: "Pressione qualquer tecla…"
   bound_key: "Tecla definida: %{key}"
+
+skill_dialog:
+  copy_name: "Copiar nome"
+  copy_desc: "Copiar descrição"
+
+shortcuts:
+  title: "Editar atalhos"
 
 race_stat_hud:
   open_race_mechanics_confirm: "Deseja abrir o navegador para visualizar o Documento de Mecânicas das Corridas? (Apenas em inglês)"
@@ -500,6 +512,7 @@ tl_update_dialog:
   content: "Uma nova atualização de tradução está disponível (%{size}). Deseja baixá-la?"
   content_zip_warning: "Uma nova atualização de tradução está disponível (%{changed_size}). Esta atualização precisará baixar (%{download_size}) de dados."
   show_changelog: "Mostrar registro de alterações"
+  changelog_unavailable: "Registro de alterações indisponível"
   changelog_title: "Registro de alterações"
   changelog_fetch_failed: "Falha ao obter registro de alterações"
   changelog_invalid: "O conteúdo do registro de alterações não é texto simples válido"
@@ -513,6 +526,10 @@ update_prompt_dialog:
     Uma nova versão do Hachimi Edge está disponível (%{version}).
 
     Deseja abrir o UmaPatcher Edge para atualizar?
+  show_changelog: "Mostrar registro de alterações"
+  changelog_title: "Registro de alterações"
+  changelog_unavailable: "Registro de alterações indisponível"
+  changelog_fetch_failed: "Falha ao obter registro de alterações"
 
 updating_dialog:
   title: "Atualizando"
