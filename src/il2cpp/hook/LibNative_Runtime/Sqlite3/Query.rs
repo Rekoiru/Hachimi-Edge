@@ -10,22 +10,15 @@ pub extern "C" fn GetText(this: *mut Il2CppObject, idx: i32) -> *mut Il2CppStrin
     if let Some(query) = SELECT_QUERIES.lock().unwrap().get(&(this as usize)) {
         let text_opt = query.get_text(this, idx);
 
-        if config.debug_mode || config.text_debug {
+        if config.debug_mode {
             let tag = query.get_origin_tag(this, idx);
             let tag_s = tag.as_deref().unwrap_or("T");
             let orig_s = if orig_str.is_null() { String::new() } else { unsafe { (*orig_str).as_utf16str().to_string() } };
 
             if let Some(lt) = text_opt {
                 let loc_s = unsafe { (*lt).as_utf16str().to_string() };
-                if config.debug_mode {
-                    info!("[MasterDB] origin: {}, original: {}, localized: {}", tag_s, orig_s, loc_s);
-                }
-                if config.text_debug {
-                    info!("[MasterDB] origin: {}, original: {}, localized: {}", tag_s, orig_s.replace('\n', "\\n"), loc_s.replace('\n', "\\n"));
-                }
-            } else if config.debug_mode {
-                info!("[MasterDB] origin: {}, content: {}", tag_s, orig_s);
-            } else if config.text_debug {
+                info!("[MasterDB] origin: {}, original: {}, localized: {}", tag_s, orig_s.replace('\n', "\\n"), loc_s.replace('\n', "\\n"));
+            } else {
                 info!("[MasterDB] origin: {}, content: {}", tag_s, orig_s.replace('\n', "\\n"));
             }
         }
@@ -33,13 +26,9 @@ pub extern "C" fn GetText(this: *mut Il2CppObject, idx: i32) -> *mut Il2CppStrin
         return text_opt.unwrap_or(orig_str);
     }
 
-    if (config.debug_mode || config.text_debug) && !orig_str.is_null() {
+    if config.debug_mode && !orig_str.is_null() {
         let orig_s = unsafe { (*orig_str).as_utf16str().to_string() };
-        if config.text_debug {
-            info!("[Sqlite] {}", orig_s.replace('\n', "\\n"));
-        } else {
-            info!("[Sqlite] {}", orig_s);
-        }
+        info!("[Sqlite] {}", orig_s.replace('\n', "\\n"));
     }
 
     orig_str
