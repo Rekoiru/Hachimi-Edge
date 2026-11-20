@@ -56,6 +56,7 @@ struct AnMotionParameterData {
 
 #[derive(Deserialize)]
 struct AnObjectParameterBaseData {
+    position: Option<Vector3_t>,
     position_offset: Option<Vector3_t>,
     scale: Option<Vector3_t>,
     rotate: Option<Vector3_t>,
@@ -64,7 +65,10 @@ struct AnObjectParameterBaseData {
     #[serde(default)]
     position_offset_key: Option<Vector3_t>,
     #[serde(default)]
-    rotate_key: Option<Vector3_t>
+    rotate_key: Option<Vector3_t>,
+    size: Option<Vector2_t>,
+    alignment: Option<i32>,
+    anchor: Option<i32>
 }
 
 #[derive(Deserialize)]
@@ -103,9 +107,14 @@ pub fn on_LoadAsset(bundle: *mut Il2CppObject, this: *mut Il2CppObject, name: &U
 fn apply_key_multiply(
     param: *mut Il2CppObject,
     get_key_param_list: fn(*mut Il2CppObject) -> *mut Il2CppObject,
-    multiply: &Vector3_t
+    multiply: &Vector3_t,
+    asset_name: &str,
+    field: &str
 ) {
-    let Some(key_param_list) = IList::new(get_key_param_list(param)) else { return; };
+    let Some(key_param_list) = IList::new(get_key_param_list(param)) else { 
+        warn!("[{}] Failed to get {} key param list", asset_name, field);
+        return;
+    };
 
     let factors = [multiply.x, multiply.y, multiply.z];
     for (axis, factor) in factors.iter().enumerate() {
@@ -126,9 +135,14 @@ fn apply_key_multiply(
 fn apply_key_add(
     param: *mut Il2CppObject,
     get_key_param_list: fn(*mut Il2CppObject) -> *mut Il2CppObject,
-    add: &Vector3_t
+    add: &Vector3_t,
+    asset_name: &str,
+    field: &str
 ) {
-    let Some(key_param_list) = IList::new(get_key_param_list(param)) else { return; };
+    let Some(key_param_list) = IList::new(get_key_param_list(param)) else {
+        warn!("[{}] Failed to get {} key param list", asset_name, field);
+        return;
+    };
 
     let offsets = [add.x, add.y, add.z];
     for (axis, offset) in offsets.iter().enumerate() {
@@ -245,6 +259,14 @@ pub fn patch_asset(this: *mut Il2CppObject, data_opt: Option<&AnRootData>, asset
                     if let Some(text) = &text_param_data.text {
                         AnTextParameter::set__text(text_param, text.to_il2cpp_string());
                     }
+                    
+                    if let Some(position) = &text_param_data.base.position {
+                        AnObjectParameterBase::set__position(text_param, position);
+                    }
+                    
+                    if let Some(anchor) = &text_param_data.base.anchor {
+                        AnTextParameter::set__anchor(text_param, anchor);
+                    }
 
                     if let Some(position_offset) = &text_param_data.base.position_offset {
                         AnObjectParameterBase::set__positionOffset(text_param, position_offset);
@@ -258,16 +280,24 @@ pub fn patch_asset(this: *mut Il2CppObject, data_opt: Option<&AnRootData>, asset
                         AnObjectParameterBase::set__rotate(text_param, rotate);
                     }
 
+                    if let Some(size) = &text_param_data.base.size {
+                        AnObjectParameterBase::set__size(text_param, size);
+                    }
+
+                    if let Some(alignment) = &text_param_data.base.alignment {
+                        AnTextParameter::set__alignment(text_param, alignment);
+                    }
+
                     if let Some(multiply) = &text_param_data.base.scale_key {
-                        apply_key_multiply(text_param, AnObjectParameterBase::get__scaleKeyParamList, multiply);
+                        apply_key_multiply(text_param, AnObjectParameterBase::get__scaleKeyParamList, multiply, asset_name, "scale_key");
                     }
 
                     if let Some(add) = &text_param_data.base.position_offset_key {
-                        apply_key_add(text_param, AnObjectParameterBase::get__positionOffsetKeyParamList, add);
+                        apply_key_add(text_param, AnObjectParameterBase::get__positionOffsetKeyParamList, add, asset_name, "position_offset_key");
                     }
 
                     if let Some(add) = &text_param_data.base.rotate_key {
-                        apply_key_add(text_param, AnObjectParameterBase::get__rotateKeyParamList, add);
+                        apply_key_add(text_param, AnObjectParameterBase::get__rotateKeyParamList, add, asset_name, "rotate_key");
                     }
                 }
             }
@@ -284,6 +314,14 @@ pub fn patch_asset(this: *mut Il2CppObject, data_opt: Option<&AnRootData>, asset
                         continue;
                     };
 
+                    if let Some(position) = &plane_param_data.base.position {
+                        AnObjectParameterBase::set__position(plane_param, position);
+                    }
+                    
+                    if let Some(anchor) = &plane_param_data.base.anchor {
+                        AnTextParameter::set__anchor(plane_param, anchor);
+                    }
+                    
                     if let Some(position_offset) = &plane_param_data.base.position_offset {
                         AnObjectParameterBase::set__positionOffset(plane_param, position_offset);
                     }
@@ -296,16 +334,20 @@ pub fn patch_asset(this: *mut Il2CppObject, data_opt: Option<&AnRootData>, asset
                         AnObjectParameterBase::set__rotate(plane_param, rotate);
                     }
 
+                    if let Some(size) = &plane_param_data.base.size {
+                        AnObjectParameterBase::set__size(plane_param, size);
+                    }
+
                     if let Some(multiply) = &plane_param_data.base.scale_key {
-                        apply_key_multiply(plane_param, AnObjectParameterBase::get__scaleKeyParamList, multiply);
+                        apply_key_multiply(plane_param, AnObjectParameterBase::get__scaleKeyParamList, multiply, asset_name, "scale_key");
                     }
 
                     if let Some(add) = &plane_param_data.base.position_offset_key {
-                        apply_key_add(plane_param, AnObjectParameterBase::get__positionOffsetKeyParamList, add);
+                        apply_key_add(plane_param, AnObjectParameterBase::get__positionOffsetKeyParamList, add, asset_name, "position_offset_key");
                     }
 
                     if let Some(add) = &plane_param_data.base.rotate_key {
-                        apply_key_add(plane_param, AnObjectParameterBase::get__rotateKeyParamList, add);
+                        apply_key_add(plane_param, AnObjectParameterBase::get__rotateKeyParamList, add, asset_name, "rotate_key");
                     }
                 }
             }
@@ -322,6 +364,14 @@ pub fn patch_asset(this: *mut Il2CppObject, data_opt: Option<&AnRootData>, asset
                         continue;
                     };
 
+                    if let Some(position) = &object_param_data.base.position {
+                        AnObjectParameterBase::set__position(object_param, position);
+                    }
+                    
+                    if let Some(anchor) = &object_param_data.base.anchor {
+                        AnTextParameter::set__anchor(object_param, anchor);
+                    }
+                    
                     if let Some(position_offset) = &object_param_data.base.position_offset {
                         AnObjectParameterBase::set__positionOffset(object_param, position_offset);
                     }
@@ -334,16 +384,20 @@ pub fn patch_asset(this: *mut Il2CppObject, data_opt: Option<&AnRootData>, asset
                         AnObjectParameterBase::set__rotate(object_param, rotate);
                     }
 
+                    if let Some(size) = &object_param_data.base.size {
+                        AnObjectParameterBase::set__size(object_param, size);
+                    }
+
                     if let Some(multiply) = &object_param_data.base.scale_key {
-                        apply_key_multiply(object_param, AnObjectParameterBase::get__scaleKeyParamList, multiply);
+                        apply_key_multiply(object_param, AnObjectParameterBase::get__scaleKeyParamList, multiply, asset_name, "scale_key");
                     }
 
                     if let Some(add) = &object_param_data.base.position_offset_key {
-                        apply_key_add(object_param, AnObjectParameterBase::get__positionOffsetKeyParamList, add);
+                        apply_key_add(object_param, AnObjectParameterBase::get__positionOffsetKeyParamList, add, asset_name, "position_offset_key");
                     }
 
                     if let Some(add) = &object_param_data.base.rotate_key {
-                        apply_key_add(object_param, AnObjectParameterBase::get__rotateKeyParamList, add);
+                        apply_key_add(object_param, AnObjectParameterBase::get__rotateKeyParamList, add, asset_name, "rotate_key");
                     }
                 }
             }

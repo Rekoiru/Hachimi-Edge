@@ -5,6 +5,11 @@ pub fn set__positionOffset(this: *mut Il2CppObject, value: &Vector3_t) {
     set_field_value(this, unsafe { _POSITIONOFFSET_FIELD }, value);
 }
 
+static mut _POSITION_FIELD: *mut FieldInfo = 0 as _;
+pub fn set__position(this: *mut Il2CppObject, value: &Vector3_t) {
+    set_field_value(this, unsafe { _POSITION_FIELD }, value);
+}
+
 static mut _SCALE_FIELD: *mut FieldInfo = 0 as _;
 pub fn set__scale(this: *mut Il2CppObject, value: &Vector3_t) {
     set_field_value(this, unsafe { _SCALE_FIELD }, value);
@@ -19,6 +24,11 @@ pub fn set__rotate(this: *mut Il2CppObject, value: &Vector3_t) {
 static mut _SCALEKEYPARAMLIST_FIELD: *mut FieldInfo = 0 as _;
 pub fn get__scaleKeyParamList(this: *mut Il2CppObject) -> *mut Il2CppObject {
     get_field_object_value(this, unsafe { _SCALEKEYPARAMLIST_FIELD })
+}
+
+static mut _SIZE_FIELD: *mut FieldInfo = 0 as _;
+pub fn set__size(this: *mut Il2CppObject, value: &Vector2_t) {
+    set_field_value(this, unsafe { _SIZE_FIELD }, value);
 }
 
 static mut _POSITIONOFFSETKEYPARAMLIST_FIELD: *mut FieldInfo = 0 as _;
@@ -39,7 +49,9 @@ pub fn init(Plugins: *const Il2CppImage) {
         _SCALE_FIELD = get_field_from_name(AnObjectParameterBase, c"_scale");
         _ROTATE_FIELD = get_field_from_name(AnObjectParameterBase, c"_rotate");
         _SCALEKEYPARAMLIST_FIELD = get_field_from_name(AnObjectParameterBase, c"_scaleKeyParamList");
+        _SIZE_FIELD = get_field_from_name(AnObjectParameterBase, c"_size");
         _POSITIONOFFSETKEYPARAMLIST_FIELD = get_field_from_name(AnObjectParameterBase, c"_positionOffsetKeyParamList");
+        _POSITION_FIELD = get_field_from_name(AnObjectParameterBase, c"_position");
         _ROTATEKEYPARAMLIST_FIELD = get_field_from_name(AnObjectParameterBase, c"_rotateKeyParamList");
     }
 }
