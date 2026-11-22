@@ -77,6 +77,7 @@ pub mod StoryTimelineLiveStreamingClipData;
 pub mod LiveStreamingCommentScriptableObject;
 pub mod PartsCommonHeaderTitle;
 pub mod PartsSingleModeHeaderTitle;
+pub mod TitleView;
 
 #[cfg(target_os = "windows")]
 pub mod SceneManager;
@@ -165,6 +166,7 @@ pub fn init() {
     LiveStreamingCommentScriptableObject::init(image);
     PartsCommonHeaderTitle::init(image);
     PartsSingleModeHeaderTitle::init(image);
+    TitleView::init(image);
     
     #[cfg(target_os = "windows")]
     {
