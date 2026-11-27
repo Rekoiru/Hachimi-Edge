@@ -61,9 +61,9 @@ struct AnObjectParameterBaseData {
     scale: Option<Vector3_t>,
     rotate: Option<Vector3_t>,
     #[serde(default)]
-    scale_key: Option<Vector3_t>,
+    scale_key: Option<Vector2_t>,
     #[serde(default)]
-    position_offset_key: Option<Vector3_t>,
+    position_offset_key: Option<Vector2_t>,
     #[serde(default)]
     rotate_key: Option<Vector3_t>,
     size: Option<Vector2_t>,
@@ -104,38 +104,12 @@ pub fn on_LoadAsset(bundle: *mut Il2CppObject, this: *mut Il2CppObject, name: &U
     patch_asset(this, asset_info.data.as_ref(), &base_path.to_string());
 }
 
-fn apply_key_multiply(
+fn apply_key(
     param: *mut Il2CppObject,
     get_key_param_list: fn(*mut Il2CppObject) -> *mut Il2CppObject,
-    multiply: &Vector3_t,
-    asset_name: &str,
-    field: &str
-) {
-    let Some(key_param_list) = IList::new(get_key_param_list(param)) else { 
-        warn!("[{}] Failed to get {} key param list", asset_name, field);
-        return;
-    };
-
-    let factors = [multiply.x, multiply.y, multiply.z];
-    for (axis, factor) in factors.iter().enumerate() {
-        if *factor == 1.0 { continue; }
-
-        let Some(key_param) = key_param_list.get(axis as i32) else { continue; };
-        let Some(key_list) = IList::<Vector2_t>::new(AnKeyParameter::get__keyList(key_param)) else { continue; };
-
-        for i in 0..key_list.count() {
-            if let Some(mut key) = key_list.get(i) {
-                key.y *= factor;
-                key_list.set(i, key);
-            }
-        }
-    }
-}
-
-fn apply_key_add(
-    param: *mut Il2CppObject,
-    get_key_param_list: fn(*mut Il2CppObject) -> *mut Il2CppObject,
-    add: &Vector3_t,
+    values: &[f32],
+    identity: f32,
+    op: impl Fn(f32, f32) -> f32,
     asset_name: &str,
     field: &str
 ) {
@@ -144,16 +118,15 @@ fn apply_key_add(
         return;
     };
 
-    let offsets = [add.x, add.y, add.z];
-    for (axis, offset) in offsets.iter().enumerate() {
-        if *offset == 0.0 { continue; }
+    for (axis, value) in values.iter().enumerate() {
+        if *value == identity { continue; }
 
         let Some(key_param) = key_param_list.get(axis as i32) else { continue; };
         let Some(key_list) = IList::<Vector2_t>::new(AnKeyParameter::get__keyList(key_param)) else { continue; };
 
         for i in 0..key_list.count() {
             if let Some(mut key) = key_list.get(i) {
-                key.y += offset;
+                key.y = op(key.y, *value);
                 key_list.set(i, key);
             }
         }
@@ -287,18 +260,6 @@ pub fn patch_asset(this: *mut Il2CppObject, data_opt: Option<&AnRootData>, asset
                     if let Some(alignment) = &text_param_data.base.alignment {
                         AnTextParameter::set__alignment(text_param, alignment);
                     }
-
-                    if let Some(multiply) = &text_param_data.base.scale_key {
-                        apply_key_multiply(text_param, AnObjectParameterBase::get__scaleKeyParamList, multiply, asset_name, "scale_key");
-                    }
-
-                    if let Some(add) = &text_param_data.base.position_offset_key {
-                        apply_key_add(text_param, AnObjectParameterBase::get__positionOffsetKeyParamList, add, asset_name, "position_offset_key");
-                    }
-
-                    if let Some(add) = &text_param_data.base.rotate_key {
-                        apply_key_add(text_param, AnObjectParameterBase::get__rotateKeyParamList, add, asset_name, "rotate_key");
-                    }
                 }
             }
 
@@ -339,15 +300,15 @@ pub fn patch_asset(this: *mut Il2CppObject, data_opt: Option<&AnRootData>, asset
                     }
 
                     if let Some(multiply) = &plane_param_data.base.scale_key {
-                        apply_key_multiply(plane_param, AnObjectParameterBase::get__scaleKeyParamList, multiply, asset_name, "scale_key");
+                        apply_key(plane_param, AnObjectParameterBase::get__scaleKeyParamList, &[multiply.x, multiply.y], 1.0, |y, v| y * v, asset_name, "scale_key");
                     }
 
                     if let Some(add) = &plane_param_data.base.position_offset_key {
-                        apply_key_add(plane_param, AnObjectParameterBase::get__positionOffsetKeyParamList, add, asset_name, "position_offset_key");
+                        apply_key(plane_param, AnObjectParameterBase::get__positionOffsetKeyParamList, &[add.x, add.y], 0.0, |y, v| y + v, asset_name, "position_offset_key");
                     }
 
                     if let Some(add) = &plane_param_data.base.rotate_key {
-                        apply_key_add(plane_param, AnObjectParameterBase::get__rotateKeyParamList, add, asset_name, "rotate_key");
+                        apply_key(plane_param, AnObjectParameterBase::get__rotateKeyParamList, &[add.x, add.y, add.z], 0.0, |y, v| y + v, asset_name, "rotate_key");
                     }
                 }
             }
@@ -386,18 +347,6 @@ pub fn patch_asset(this: *mut Il2CppObject, data_opt: Option<&AnRootData>, asset
 
                     if let Some(size) = &object_param_data.base.size {
                         AnObjectParameterBase::set__size(object_param, size);
-                    }
-
-                    if let Some(multiply) = &object_param_data.base.scale_key {
-                        apply_key_multiply(object_param, AnObjectParameterBase::get__scaleKeyParamList, multiply, asset_name, "scale_key");
-                    }
-
-                    if let Some(add) = &object_param_data.base.position_offset_key {
-                        apply_key_add(object_param, AnObjectParameterBase::get__positionOffsetKeyParamList, add, asset_name, "position_offset_key");
-                    }
-
-                    if let Some(add) = &object_param_data.base.rotate_key {
-                        apply_key_add(object_param, AnObjectParameterBase::get__rotateKeyParamList, add, asset_name, "rotate_key");
                     }
                 }
             }
